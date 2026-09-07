@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SamMath</title>
+
+  <style>
+    :root {
+      --bg-color: #e0f2f1;
+      --card-bg: #ffffff;
+      --primary: #00796b;
+      --primary-light: #e0f2f1;
+      --success: #2e7d32;
+      --success-light: #e8f5e9;
+      --error: #c62828;
+      --error-light: #ffebee;
+      --warning: #ef6c00;
+      --warning-light: #fff3e0;
+      --text: #37474f;
+      --btn-bg: #f0f4f8;
+      --btn-active: #d0e2ec;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text);
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      user-select: none;
+    }
+
+    .app-container {
+      background: var(--card-bg);
+      width: 100%;
+      max-width: 400px;
+      border-radius: 24px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      padding: 24px 20px 16px 20px;
+      box-sizing: border-box;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hidden { display: none !important; }
+
+    .menu-container {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .menu-title {
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: var(--primary);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .level-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+
+    .level-btn {
+      background: var(--btn-bg);
+      border: 2px solid transparent;
+      border-radius: 14px;
+      padding: 18px 14px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .level-btn:hover, .level-btn:active {
+      background: var(--btn-active);
+      border-color: var(--primary);
+    }
+
+    .level-name {
+      font-size: 1.15rem;
+      font-weight: bold;
+      color: var(--primary);
+    }
+
+    .operation-text {
+      font-size: 2.8rem;
+      font-weight: bold;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .input-box {
+      font-size: 2.3rem;
+      width: 200px;
+      height: 60px;
+      text-align: center;
+      border: 3px solid var(--primary);
+      border-radius: 16px;
+      outline: none;
+      transition: all 0.2s;
+      color: var(--text);
+      background: #fafafa;
+      margin-bottom: 20px;
+      letter-spacing: 4px;
+    }
+
+    .keypad-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .key-btn {
+      background: var(--btn-bg);
+      color: var(--text);
+      border: none;
+      border-radius: 14px;
+      font-size: 1.7rem;
+      font-weight: bold;
+      padding: 14px 0;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #cfd8dc;
+      transition: all 0.05s ease;
+      touch-action: manipulation;
+    }
+
+    .key-btn:active {
+      transform: translateY(4px);
+      box-shadow: 0 0 0 #cfd8dc;
+      background: var(--btn-active);
+    }
+
+    .key-btn.action-btn {
+      background: #ffe0b2;
+      color: #e65100;
+      box-shadow: 0 4px 0 #ffe0b2;
+    }
+
+    .key-btn.action-btn:active {
+      background: #ffcc80;
+      box-shadow: 0 0 0 #ffe0b2;
+    }
+
+    .key-btn.empty-btn { visibility: hidden; }
+
+    .header-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(4px);
+      border-radius: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      box-sizing: border-box;
+      z-index: 10;
+    }
+
+    .modal-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 18px;
+      width: 100%;
+      max-width: 320px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      text-align: center;
+    }
+
+    .success-box {
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: var(--success);
+      background: var(--success-light);
+      border-radius: 12px;
+      padding: 20px 10px;
+      border: 2px solid var(--success);
+    }
+
+    .correction-box {
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: var(--error);
+      background: var(--error-light);
+      border-radius: 12px;
+      padding: 20px 10px;
+      border: 2px solid var(--error);
+    }
+
+    .card-subtitle {
+      font-size: 1.1rem;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    .card-subtitle.success { color: var(--success); }
+    .card-subtitle.error { color: var(--error); }
+
+    .study-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: var(--primary);
+      margin-bottom: 12px;
+    }
+
+    .study-instruction {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #004d40;
+      background: #e0f2f1;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 14px;
+      line-height: 1.3;
+    }
+
+    .single-fact-box {
+      background: #f0f4f8;
+      border-radius: 14px;
+      padding: 24px 12px;
+      margin-bottom: 16px;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+    }
+
+    .tutorial-box {
+      background: #f0f4f8;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      text-align: left;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      color: var(--text);
+    }
+
+    .tutorial-example {
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: var(--primary);
+      text-align: center;
+      margin: 8px 0;
+      background: white;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px dashed var(--primary);
+    }
+
+    .action-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .continue-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s ease;
+    }
+
+    .continue-btn:disabled {
+      background: #b0bec5;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    .secondary-btn {
+      background: var(--btn-bg);
+      color: var(--text);
+      border: none;
+      padding: 10px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    .form-input-field {
+      width: 100%;
+      padding: 10px;
+      font-size: 0.95rem;
+      border: 2px solid #b0bec5;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input-field:focus {
+      border-color: var(--primary);
+    }
+
+    .form-label {
+      font-size: 0.8rem;
+      font-weight: bold;
+      color: var(--text);
+      text-align: left;
+      width: 100%;
+      margin-bottom: 3px;
+      display: block;
+    }
+
+    .copyright-footer {
+      font-size: 0.7rem;
+      color: #90a4ae;
+      margin-top: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- VISTA 0: REGISTRO INICIAL OBLIGATORIO (sin QR, o si faltan datos en el enlace) -->
+    <div id="view-register" class="menu-container hidden">
+      <div class="menu-title">¡Bienvenido a SamMath!</div>
+      <div class="tutorial-box" style="margin-bottom: 12px; text-align: center;">
+        Por favor, introduce tus datos para comenzar a practicar.
+      </div>
+
+      <label class="form-label">Número de clase *</label>
+      <input type="text" id="reg-numero-clase" class="form-input-field" placeholder="Ej: 12" />
+
+      <label class="form-label">Correo electrónico (Tutor) *</label>
+      <input type="email" id="reg-email" class="form-input-field" placeholder="correo@tutor.com" />
+
+      <label class="form-label">Centro educativo *</label>
+      <input type="text" id="reg-centro" class="form-input-field" placeholder="Ej: IES Miguel Fernández" list="centro-datalist" autocomplete="off" />
+      <datalist id="centro-datalist"></datalist>
+
+      <label class="form-label">Grupo * (Curso y letra)</label>
+      <input type="text" id="reg-curso" class="form-input-field" placeholder="Ej: 1c, 1 C, 1ºC..." style="margin-bottom: 16px;" />
+
+      <button class="continue-btn" onclick="submitInitialRegistration()">COMENZAR →</button>
+    </div>
+
+    <!-- VISTA 0b: REGISTRO SIMPLIFICADO (llegó desde un QR con centro/grupo/número de clase ya incluidos) -->
+    <div id="view-register-qr" class="menu-container hidden">
+      <div class="menu-title">¡Bienvenido a SamMath!</div>
+      <div class="tutorial-box" style="margin-bottom: 12px; text-align: center;">
+        <div id="qr-datos-resumen" style="font-weight: bold; margin-bottom: 8px;"></div>
+        Solo necesitamos el correo del tutor/a para empezar.
+      </div>
+
+      <label class="form-label">Correo electrónico (Tutor) *</label>
+      <input type="email" id="qr-email" class="form-input-field" placeholder="correo@tutor.com" style="margin-bottom: 16px;" />
+
+      <button class="continue-btn" onclick="submitQrRegistration()">COMENZAR →</button>
+    </div>
+
+    <!-- VISTA 1: SELECCION DE NIVEL -->
+    <div id="view-levels" class="menu-container hidden">
+      <div class="menu-title">SamMath</div>
+
+      <div class="level-grid">
+        <div class="level-btn" onclick="selectLevel(1)">
+          <div class="level-name">1 Multiplicación</div>
+        </div>
+        <div class="level-btn" onclick="selectLevel(2)">
+          <div class="level-name">2 División</div>
+        </div>
+        <div class="level-btn" onclick="selectLevel(3)">
+          <div class="level-name">3 Factorización</div>
+        </div>
+      </div>
+
+      <button class="secondary-btn" style="margin-top: 8px;" onclick="openEmailConfigModal()">⚙️ Configurar Datos</button>
+    </div>
+
+    <!-- VISTA 2: PRÁCTICA -->
+    <div id="view-practice" class="menu-container hidden">
+      <div class="header-bar">
+        
+      </div>
+
+      <div class="operation-text" id="op-text">--</div>
+      
+      <input type="text" id="user-input" class="input-box" readonly />
+
+      <div class="keypad-grid" id="keypad">
+        <button class="key-btn" onclick="pressKey('1')">1</button>
+        <button class="key-btn" onclick="pressKey('2')">2</button>
+        <button class="key-btn" onclick="pressKey('3')">3</button>
+        <button class="key-btn" onclick="pressKey('4')">4</button>
+        <button class="key-btn" onclick="pressKey('5')">5</button>
+        <button class="key-btn" onclick="pressKey('6')">6</button>
+        <button class="key-btn" onclick="pressKey('7')">7</button>
+        <button class="key-btn" onclick="pressKey('8')">8</button>
+        <button class="key-btn" onclick="pressKey('9')">9</button>
+        <button class="key-btn empty-btn"></button>
+        <button class="key-btn" onclick="pressKey('0')">0</button>
+        <button class="key-btn action-btn" onclick="pressKey('back')">⌫</button>
+      </div>
+    </div>
+
+    <!-- MODAL GENERAL -->
+    <div id="app-modal" class="overlay hidden">
+      <div class="modal-card">
+        <div id="modal-title" class="study-title hidden"></div>
+        <div id="modal-content"></div>
+        <div class="action-stack" id="modal-actions">
+          <button class="continue-btn hidden" id="continue-modal-btn" onclick="onContinueModalClick()">CONTINUAR →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="copyright-footer">
+      © 2026 Samuel Nicolás Jiménez Lloret. Todos los derechos reservados.
+    </div>
+  </div>
+
+  <script>
+    /*
+     * Copyright (c) 2026 Samuel Nicolás Jiménez Lloret.
+     * Todos los derechos reservados.
+     */
+
+    // URL del flujo de automatización (Power Automate / Google Apps Script)
+    const AUTOMATION_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxvbPzlVYywYGqDciB4hmyo2KnNOlltS8LRVC0VXkeLwvK5c8knE70LFYbiY1GjOvv3qg/exec";
+
+    let dynamicTimeLimit = 5000; 
+    let recentResponseTimes = []; 
+
+    const MULTI_FACTOR_EXTRA_TIME_MS = 3000;
+    const SUCCESS_PAUSE_MS = 1500;
+    const ERROR_PAUSE_MS = 3500;
+    const REQUIRED_CLEAN_STREAK = 2;
+    const SESSION_INACTIVITY_MS = 30 * 60 * 1000;
+    const SESSION_MAX_DURATION_SEC = 20 * 60;
+
+    let currentLevel = 1;
+    let currentPhase = 1;
+    let currentBlockIndex = 0;
+    
+    let studentNumeroClase = "";
+    let parentEmail = "";
+    let studentCentro = "";
+    let studentCurso = "";
+
+    // Lista de centros ya usados en este dispositivo, para autocompletado y normalización
+    const KNOWN_CENTROS_KEY = 'sammath_centros_conocidos';
+    let knownCentros = [];
+
+    // Mensajes motivadores para el alumnado (sin números, sin comparaciones)
+    const MOTIVATIONAL_MESSAGES = [
+      "Hoy has demostrado una gran constancia.",
+      "Se nota tu esfuerzo.",
+      "Estás progresando poco a poco.",
+      "Cada práctica cuenta.",
+      "Sigue así.",
+      "Tu dedicación está dando resultado."
+    ];
+    const MOTIVATIONAL_EVERY_N_SUCCESSES = 5;
+
+    const BLOCKS_DEF = [
+      { table: 2, range: [1, 10], name: "Tabla del 2" },
+      { table: 3, range: [1, 10], name: "Tabla del 3" },
+      { table: 4, range: [1, 10], name: "Tabla del 4" },
+      { table: 5, range: [1, 10], name: "Tabla del 5" },
+      { table: 6, range: [1, 5],  name: "Tabla del 6 (1 al 5)" },
+      { table: 6, range: [6, 10], name: "Tabla del 6 (6 al 10)" },
+      { table: 7, range: [1, 5],  name: "Tabla del 7 (1 al 5)" },
+      { table: 7, range: [6, 10], name: "Tabla del 7 (6 al 10)" },
+      { table: 8, range: [1, 5],  name: "Tabla del 8 (1 al 5)" },
+      { table: 8, range: [6, 10], name: "Tabla del 8 (6 al 10)" },
+      { table: 9, range: [1, 5],  name: "Tabla del 9 (1 al 5)" },
+      { table: 9, range: [6, 10], name: "Tabla del 9 (6 al 10)" },
+      { table: "ALL", range: [1, 10], name: "Bloque Final Repaso Global" }
+    ];
+
+    let timerTimeout = null;
+    let sessionInterval = null;
+    let sessionSecondsRemaining = SESSION_MAX_DURATION_SEC;
+    let isSessionActive = false;
+
+    let sessionStats = {
+      totalAttempts: 0,
+      totalSuccesses: 0,
+      totalFailures: 0,
+      startTime: null
+    };
+
+    let sessionHistory = [];
+    // Desglose de aciertos/fallos por tabla (2 a 9) de la sesión actual
+    let sessionTableStats = {};
+    let isProcessing = false;
+    let currentSessionId = 1;
+    let pendingNextStep = null;
+    
+    let diagnosticQueue = [];
+
+    // Lógica de alternancia para operaciones con 3 fallos acumulados
+    let pendingAlternationQueue = [];
+    let opInAlternation = null;
+
+    let opStats = {}; 
+    let currentOpKey = null;
+    let previousOpKey = null;
+    let currentOp = null;
+    let studyTimerInterval = null;
+
+    // --- Normalización de Centro y Grupo ---
+
+    function stripAccents(str) {
+      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function toTitleCase(str) {
+      return str.toLowerCase().replace(/(^|\s)\p{L}/gu, c => c.toUpperCase());
+    }
+
+    function loadKnownCentros() {
+      try {
+        const raw = localStorage.getItem(KNOWN_CENTROS_KEY);
+        knownCentros = raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        knownCentros = [];
+      }
+    }
+
+    function saveKnownCentros() {
+      localStorage.setItem(KNOWN_CENTROS_KEY, JSON.stringify(knownCentros));
+    }
+
+    function populateCentroDatalist() {
+      const datalist = document.getElementById('centro-datalist');
+      if (!datalist) return;
+      datalist.innerHTML = knownCentros.map(c => `<option value="${c}"></option>`).join('');
+    }
+
+    // Unifica variantes como "ies miguel fernandez" / "IES Miguel Fernández" en una única forma canónica.
+    // Si ya existe un centro equivalente (ignorando mayúsculas y acentos), se reutiliza tal cual estaba
+    // guardado, para que SIEMPRE coincida carácter a carácter con lo que hay en el Registro.
+    // Si es nuevo, se guarda exactamente como lo escribió el docente (sin "corregir" mayúsculas,
+    // para no romper siglas como "IES").
+    function normalizeCentro(raw) {
+      const clean = raw.trim().replace(/\s+/g, ' ');
+      if (!clean) return clean;
+
+      const cleanKey = stripAccents(clean).toLowerCase();
+      const existing = knownCentros.find(c => stripAccents(c).toLowerCase() === cleanKey);
+      if (existing) return existing;
+
+      knownCentros.push(clean);
+      saveKnownCentros();
+      populateCentroDatalist();
+      return clean;
+    }
+
+    // Normaliza el grupo a formato "1º C": admite "1c", "1 C", "1ºc", "1º C", etc.
+    // Fecha local (no UTC): con toISOString() cerca de medianoche se podía guardar el día
+    // equivocado según el huso horario, y el correo diario dejaba de encontrar la sesión "de hoy".
+    function fechaLocalHoy() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function normalizeGrupo(raw) {
+      const clean = raw.trim();
+      const match = clean.match(/^(\d{1,2})\s*[ºo°]?\s*([a-zA-Z])$/);
+      if (match) {
+        const numero = match[1];
+        const letra = match[2].toUpperCase();
+        return `${numero}º ${letra}`;
+      }
+      // Si no encaja con el patrón esperado, se devuelve limpio tal cual para no perder el dato
+      return clean.replace(/\s+/g, ' ');
+    }
+
+    // Lee centro/curso/número de clase desde la URL (los que trae el enlace del código QR)
+    function leerParamsQR() {
+      const params = new URLSearchParams(window.location.search);
+      const centro = params.get('centro');
+      const curso = params.get('curso');
+      const clase = params.get('clase');
+      if (centro && curso && clase) {
+        return { centro, curso, clase };
+      }
+      return null;
+    }
+
+    function initProgress() {
+      loadKnownCentros();
+      populateCentroDatalist();
+
+      const data = localStorage.getItem('sammath_minimal_db');
+      const now = Date.now();
+
+      if (data) {
+        try {
+          const user = JSON.parse(data);
+          currentBlockIndex = user.currentBlockIndex || 0;
+          currentLevel = user.currentLevel || 1;
+          currentPhase = user.currentPhase || 1;
+          
+          studentNumeroClase = user.studentNumeroClase || "";
+          parentEmail = user.parentEmail || "";
+          studentCentro = user.studentCentro || "";
+          studentCurso = user.studentCurso || "";
+
+          opStats = user.opStats || {};
+          sessionHistory = user.sessionHistory || [];
+          
+          const lastSessionId = user.currentSessionId || 1;
+          const lastActivity = user.lastUpdated ? new Date(user.lastUpdated).getTime() : 0;
+
+          if (now - lastActivity > SESSION_INACTIVITY_MS) {
+            currentSessionId = lastSessionId + 1;
+          } else {
+            currentSessionId = lastSessionId;
+          }
+        } catch(e) {
+          currentBlockIndex = 0;
+          currentLevel = 1;
+          currentPhase = 1;
+          currentSessionId = 1;
+          opStats = {};
+          sessionHistory = [];
+        }
+      } else {
+        currentSessionId = 1;
+      }
+
+      if (!studentNumeroClase || !parentEmail || !studentCentro || !studentCurso) {
+        const qr = leerParamsQR();
+        if (qr) {
+          studentCentro = qr.centro;
+          studentCurso = qr.curso;
+          studentNumeroClase = qr.clase;
+          showRegisterQrView();
+        } else {
+          showRegisterView();
+        }
+      } else {
+        showLevelsMenu();
+      }
+
+      initBlockOperations();
+    }
+
+    function showRegisterView() {
+      document.getElementById('view-levels').classList.add('hidden');
+      document.getElementById('view-practice').classList.add('hidden');
+      document.getElementById('view-register').classList.remove('hidden');
+
+      if (studentNumeroClase) document.getElementById('reg-numero-clase').value = studentNumeroClase;
+      if (parentEmail) document.getElementById('reg-email').value = parentEmail;
+      if (studentCentro) document.getElementById('reg-centro').value = studentCentro;
+      if (studentCurso) document.getElementById('reg-curso').value = studentCurso;
+    }
+
+    function submitInitialRegistration() {
+      const numClase = document.getElementById('reg-numero-clase').value.trim();
+      const email = document.getElementById('reg-email').value.trim();
+      const centro = document.getElementById('reg-centro').value.trim();
+      const curso = document.getElementById('reg-curso').value.trim();
+
+      if (!numClase || !email || !email.includes('@') || !centro || !curso) {
+        alert("Por favor, rellena obligatoriamente todos los campos marcados con asterisco (*).");
+        return;
+      }
+
+      studentNumeroClase = numClase;
+      parentEmail = email;
+      studentCentro = normalizeCentro(centro);
+      studentCurso = normalizeGrupo(curso);
+
+      saveProgress();
+      enviarPingRegistro();
+      showLevelsMenu();
+    }
+
+    // Vista simplificada cuando se entra desde el QR: centro/grupo/número de clase ya vienen dados
+    function showRegisterQrView() {
+      document.getElementById('view-levels').classList.add('hidden');
+      document.getElementById('view-practice').classList.add('hidden');
+      document.getElementById('view-register-qr').classList.remove('hidden');
+      document.getElementById('qr-datos-resumen').innerText =
+        `${studentCentro} — ${studentCurso} — Alumno nº ${studentNumeroClase}`;
+      if (parentEmail) document.getElementById('qr-email').value = parentEmail;
+    }
+
+    function submitQrRegistration() {
+      const email = document.getElementById('qr-email').value.trim();
+      if (!email || !email.includes('@')) {
+        alert("Por favor, introduce un correo electrónico válido.");
+        return;
+      }
+      parentEmail = email;
+      saveProgress();
+      enviarPingRegistro();
+      document.getElementById('view-register-qr').classList.add('hidden');
+      showLevelsMenu();
+    }
+
+    // Aviso ligero (no espera a que termine una sesión) para que la Hoja sepa quién es este
+    // alumno y a qué correo avisar, aunque hoy no llegue a practicar nada.
+    function enviarPingRegistro() {
+      if (!AUTOMATION_ENDPOINT_URL || AUTOMATION_ENDPOINT_URL === "AQUI_PONDREMOS_TU_URL") return;
+      const payload = {
+        tipo: "registro",
+        centro: studentCentro,
+        curso: studentCurso,
+        numero_clase: studentNumeroClase,
+        email_tutor: parentEmail
+      };
+      fetch(AUTOMATION_ENDPOINT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      }).catch(err => console.error("Error al enviar el registro:", err));
+    }
+
+    function openEmailConfigModal() {
+      const modal = document.getElementById('app-modal');
+      const titleEl = document.getElementById('modal-title');
+      const contentEl = document.getElementById('modal-content');
+      const actionsEl = document.getElementById('modal-actions');
+
+      titleEl.innerText = "⚙️ CONFIGURACIÓN DE DATOS";
+      titleEl.classList.remove('hidden');
+
+      contentEl.innerHTML = `
+        <div class="tutorial-box" style="margin-bottom:10px;">
+          Modifica tus datos si lo necesitas:
+        </div>
+        <label class="form-label">Número de clase *</label>
+        <input type="text" id="cfg-numero-clase" class="form-input-field" value="${studentNumeroClase}" />
+        <label class="form-label">Correo electrónico *</label>
+        <input type="email" id="cfg-email" class="form-input-field" value="${parentEmail}" />
+        <label class="form-label">Centro educativo *</label>
+        <input type="text" id="cfg-centro" class="form-input-field" value="${studentCentro}" list="centro-datalist" autocomplete="off" />
+        <label class="form-label">Grupo * (Curso y letra)</label>
+        <input type="text" id="cfg-curso" class="form-input-field" value="${studentCurso}" style="margin-bottom: 10px;" />
+      `;
+
+      actionsEl.innerHTML = `
+        <button class="continue-btn" onclick="saveEmailConfigModal()">GUARDAR →</button>
+      `;
+
+      modal.classList.remove('hidden');
+    }
+
+    function saveEmailConfigModal() {
+      const numClase = document.getElementById('cfg-numero-clase').value.trim();
+      const email = document.getElementById('cfg-email').value.trim();
+      const centro = document.getElementById('cfg-centro').value.trim();
+      const curso = document.getElementById('cfg-curso').value.trim();
+
+      if (!numClase || !email || !email.includes('@') || !centro || !curso) {
+        alert("Todos los campos marcados con asterisco (*) son obligatorios.");
+        return;
+      }
+
+      studentNumeroClase = numClase;
+      parentEmail = email;
+      studentCentro = normalizeCentro(centro);
+      studentCurso = normalizeGrupo(curso);
+
+      saveProgress();
+      enviarPingRegistro();
+      closeModal();
+    }
+
+    function initBlockOperations() {
+      for (let t = 2; t <= 9; t++) {
+        for (let i = 1; i <= 10; i++) {
+          const key = `${t}x${i}`;
+          if (!opStats[key]) {
+            opStats[key] = {
+              cleanStreak: 0,
+              inErrorBag: false,
+              weight: 0.60,
+              attempts: 0,
+              successes: 0,
+              totalFailuresAcc: 0,
+              failureSessions: []
+            };
+          }
+        }
+      }
+    }
+
+    function saveProgress() {
+      const db = {
+        currentLevel: currentLevel,
+        currentPhase: currentPhase,
+        currentBlockIndex: currentBlockIndex,
+        currentSessionId: currentSessionId,
+        studentNumeroClase: studentNumeroClase,
+        parentEmail: parentEmail,
+        studentCentro: studentCentro,
+        studentCurso: studentCurso,
+        opStats: opStats,
+        sessionHistory: sessionHistory,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('sammath_minimal_db', JSON.stringify(db));
+    }
+
+    function startGlobalSessionTimer() {
+      if (isSessionActive) return;
+      isSessionActive = true;
+      sessionSecondsRemaining = SESSION_MAX_DURATION_SEC;
+      sessionStats = {
+        totalAttempts: 0,
+        totalSuccesses: 0,
+        totalFailures: 0,
+        startTime: new Date()
+      };
+      informeYaEnviado = false;
+      // Desglose de aciertos/fallos por tabla (2-9) SOLO de esta sesión (se reinicia cada sesión)
+      sessionTableStats = {};
+      for (let t = 2; t <= 9; t++) {
+        sessionTableStats[t] = { aciertos: 0, fallos: 0 };
+      }
+
+      sessionInterval = setInterval(() => {
+        sessionSecondsRemaining--;
+        if (sessionSecondsRemaining <= 0) {
+          stopGlobalSessionTimer();
+          finishSessionAndSendReport();
+        }
+      }, 1000);
+    }
+
+    function stopGlobalSessionTimer() {
+      if (sessionInterval) {
+        clearInterval(sessionInterval);
+        sessionInterval = null;
+      }
+      isSessionActive = false;
+    }
+
+    // Genera un mensaje automático para el docente a partir de las reglas aprobadas.
+    // No se envía ningún correo por sesión: esto solo rellena un campo del registro
+    // que Power Automate guardará en Excel/SharePoint. El correo diario (21:00) lo
+    // dispara un flujo programado aparte, que lee el Excel una vez al día.
+    function generarMensajeDocente(durationMinutes, accuracy, previousAvgAccuracy) {
+      if (durationMinutes >= 30) {
+        return "Hoy has demostrado una gran constancia.";
+      }
+      if (accuracy >= 85) {
+        return "Se nota el esfuerzo que estás realizando.";
+      }
+      if (previousAvgAccuracy !== null && accuracy > previousAvgAccuracy) {
+        return "Estás progresando poco a poco.";
+      }
+      return "Cada práctica cuenta. Sigue aprendiendo.";
+    }
+
+    function getPreviousAverageAccuracy() {
+      if (!sessionHistory || sessionHistory.length === 0) return null;
+      const sum = sessionHistory.reduce((acc, s) => acc + (s.precision || 0), 0);
+      return sum / sessionHistory.length;
+    }
+
+    let informeYaEnviado = false; // evita que se mande el mismo informe dos veces (p.ej. visibilitychange + pagehide)
+
+    function finishSessionAndSendReport() {
+      stopGlobalSessionTimer();
+
+      if (informeYaEnviado) return;
+      if (sessionStats.totalAttempts === 0 || !parentEmail) return;
+
+      informeYaEnviado = true;
+
+      const accuracy = sessionStats.totalAttempts > 0 
+        ? Math.round((sessionStats.totalSuccesses / sessionStats.totalAttempts) * 100) 
+        : 0;
+
+      const durationMinutes = Math.round((SESSION_MAX_DURATION_SEC - sessionSecondsRemaining) / 60) || 1;
+      const previousAvgAccuracy = getPreviousAverageAccuracy();
+      const mensajeDocente = generarMensajeDocente(durationMinutes, accuracy, previousAvgAccuracy);
+
+      const payload = {
+        fecha: fechaLocalHoy(),
+        alumno: `Alumno nº ${studentNumeroClase}`,
+        numero_clase: studentNumeroClase,
+        centro: studentCentro || "No especificado",
+        curso: studentCurso || "No especificado",
+        email_tutor: parentEmail,
+        nivel: currentLevel,
+        nivel_bloque: `Nivel ${currentLevel} (Fase ${currentPhase}) - ${BLOCKS_DEF[currentBlockIndex].name}`,
+        duracion_minutos: durationMinutes,
+        aciertos: sessionStats.totalSuccesses,
+        fallos: sessionStats.totalFailures,
+        precision: accuracy,
+        MensajeDocente: mensajeDocente
+      };
+
+      // Desglose por tabla (2 a 9), aciertos y fallos de ESTA sesión
+      for (let t = 2; t <= 9; t++) {
+        const st = sessionTableStats[t] || { aciertos: 0, fallos: 0 };
+        payload[`t${t}_a`] = st.aciertos;
+        payload[`t${t}_f`] = st.fallos;
+      }
+
+      // Guardamos también en el historial local (respaldo) para futuras comparativas
+      sessionHistory.push({
+        fecha: payload.fecha,
+        duracion_minutos: durationMinutes,
+        precision: accuracy
+      });
+      if (sessionHistory.length > 60) sessionHistory.shift();
+      saveProgress();
+
+      if (AUTOMATION_ENDPOINT_URL && AUTOMATION_ENDPOINT_URL !== "AQUI_PONDREMOS_TU_URL") {
+        // IMPORTANTE: usamos 'text/plain' y no 'application/json'. Con 'application/json',
+        // el navegador lanza una comprobación previa (CORS preflight) que Google Apps Script
+        // no responde, y la petición se descarta en silencio (sendBeacon "cree" que la envió
+        // bien, pero nunca llega). Con 'text/plain' se evita esa comprobación y llega siempre.
+        // Apps Script no mira el tipo declarado: igualmente hacemos JSON.parse() del contenido.
+        const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain;charset=utf-8' });
+        const sent = navigator.sendBeacon ? navigator.sendBeacon(AUTOMATION_ENDPOINT_URL, blob) : false;
+        if (!sent) {
+          fetch(AUTOMATION_ENDPOINT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            keepalive: true,
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+          }).catch(err => console.error("Error al enviar registro:", err));
+        }
+      }
+    }
+
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && sessionStats.totalAttempts > 0) {
+        finishSessionAndSendReport();
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      if (sessionStats.totalAttempts > 0) {
+        finishSessionAndSendReport();
+      }
+    });
+
+    function showLevelsMenu() {
+      stopGlobalSessionTimer();
+      document.getElementById('view-register').classList.add('hidden');
+      document.getElementById('view-practice').classList.add('hidden');
+      document.getElementById('view-levels').classList.remove('hidden');
+    }
+
+    function selectLevel(lvl) {
+      if (!studentNumeroClase || !parentEmail || !studentCentro || !studentCurso) {
+        showRegisterView();
+        return;
+      }
+      currentLevel = lvl;
+      if (lvl === 1) {
+        currentPhase = 1;
+        initDiagnosticQueue();
+      } else {
+        currentPhase = 3;
+      }
+      saveProgress();
+
+      if (currentLevel === 3) {
+        triggerLevel3Explanation();
+      } else {
+        startDirectPractice();
+      }
+    }
+
+    function initDiagnosticQueue() {
+      diagnosticQueue = [];
+      for (let bIndex = 0; bIndex < BLOCKS_DEF.length - 1; bIndex++) {
+        const block = BLOCKS_DEF[bIndex];
+        let blockOps = [];
+        for (let i = block.range[0]; i <= block.range[1]; i++) {
+          if (i !== 1 && i !== 10) {
+            blockOps.push({ x: block.table, y: i, blockIdx: bIndex });
+          }
+        }
+        blockOps.sort(() => Math.random() - 0.5);
+        const selected = blockOps.slice(0, 5);
+        diagnosticQueue.push(...selected);
+      }
+      diagnosticQueue.sort(() => Math.random() - 0.5);
+    }
+
+    function evaluateDiagnosticAndTransition() {
+      let blockAccuracies = [];
+      
+      for (let bIndex = 0; bIndex < BLOCKS_DEF.length - 1; bIndex++) {
+        let bAttempts = 0;
+        let bSuccess = 0;
+        const block = BLOCKS_DEF[bIndex];
+        
+        for (let i = block.range[0]; i <= block.range[1]; i++) {
+          const key = `${block.table}x${i}`;
+          if (opStats[key] && opStats[key].attempts > 0) {
+            bAttempts += opStats[key].attempts;
+            bSuccess += opStats[key].successes;
+          }
+        }
+        
+        const acc = bAttempts > 0 ? (bSuccess / bAttempts) * 100 : 100;
+        blockAccuracies.push({ blockIdx: bIndex, accuracy: acc, attempts: bAttempts });
+      }
+
+      let targetBlock = 0;
+      for (let item of blockAccuracies) {
+        if (item.accuracy < 80) {
+          targetBlock = item.blockIdx;
+          break;
+        }
+      }
+
+      currentBlockIndex = targetBlock;
+      currentPhase = 2;
+
+      for (let key in opStats) {
+        if (opStats[key].successes < opStats[key].attempts) {
+          opStats[key].inErrorBag = true;
+        }
+      }
+
+      saveProgress();
+      renderOperation();
+    }
+
+    function triggerLevel3Explanation() {
+      const modal = document.getElementById('app-modal');
+      const titleEl = document.getElementById('modal-title');
+      const contentEl = document.getElementById('modal-content');
+      const actionsEl = document.getElementById('modal-actions');
+
+      titleEl.innerText = "💡 NIVEL 3: FACTORIZACIÓN";
+      titleEl.classList.remove('hidden');
+
+      contentEl.innerHTML = `
+        <div class="tutorial-box">
+          En este nivel debes encontrar los <strong>dos factores</strong> que al multiplicarse dan el número mostrado.
+          <div class="tutorial-example">24 = _ × _</div>
+          <strong>Ejemplo:</strong> Escribe los dígitos seguidos. Para 24 sirven tanto <strong>46</strong> (4×6) como <strong>64</strong> (6×4).
+        </div>
+      `;
+
+      actionsEl.innerHTML = `
+        <button class="continue-btn" onclick="closeModal(); startDirectPractice();">¡ENTENDIDO, EMPEZAR! →</button>
+      `;
+
+      modal.classList.remove('hidden');
+    }
+
+    function startDirectPractice() {
+      previousOpKey = null;
+      pendingAlternationQueue = [];
+      opInAlternation = null;
+
+      document.getElementById('view-register').classList.add('hidden');
+      document.getElementById('view-levels').classList.add('hidden');
+      document.getElementById('view-practice').classList.remove('hidden');
+      
+      
+      startGlobalSessionTimer();
+      renderOperation();
+    }
+
+    function startHiddenTimer(timeLimit) {
+      stopHiddenTimer();
+      const duration = timeLimit || dynamicTimeLimit;
+      timerTimeout = setTimeout(() => {
+        onTimeOut();
+      }, duration);
+    }
+
+    function stopHiddenTimer() {
+      if (timerTimeout) {
+        clearTimeout(timerTimeout);
+        timerTimeout = null;
+      }
+    }
+
+    function onTimeOut() {
+      if (isProcessing) return;
+      processAnswerResult(false);
+    }
+
+    function getRandomEasyOrConsolidatedOp() {
+      let candidates = [];
+
+      for (let key in opStats) {
+        const stat = opStats[key];
+        if (stat.attempts >= 5 && (stat.successes / stat.attempts) >= 0.95) {
+          let parts = key.split('x');
+          candidates.push({ key: key, x: parseInt(parts[0]), y: parseInt(parts[1]) });
+        }
+      }
+
+      if (candidates.length === 0) {
+        for (let t = 2; t <= 5; t++) {
+          for (let i = 1; i <= 5; i++) {
+            candidates.push({ key: `${t}x${i}`, x: t, y: i });
+          }
+        }
+      }
+
+      const selected = candidates[Math.floor(Math.random() * candidates.length)];
+      return selected;
+    }
+
+    function buildOpObjectFromPair(a, b) {
+      const product = a * b;
+
+      if (currentLevel === 1) {
+        return {
+          text: `${a} × ${b}`,
+          answer: product.toString(),
+          correctDisplay: `${a} × ${b} = ${product}`,
+          table: a,
+          validAnswers: [product.toString()],
+          isMultiFactor: false
+        };
+      } else if (currentLevel === 2) {
+        return {
+          text: `${product} : ${a}`,
+          answer: b.toString(),
+          correctDisplay: `${product} : ${a} = ${b}`,
+          table: a,
+          validAnswers: [b.toString()],
+          isMultiFactor: false
+        };
+      } else {
+        const isMultiFactorN3 = [36, 24, 16, 12].includes(product);
+        let validPairs = [`${a}${b}`, `${b}${a}`];
+        let correctText = `${product} = ${a} × ${b}`;
+
+        return {
+          text: `${product} = _ × _`,
+          answer: `${a}${b}`,
+          correctDisplay: correctText,
+          table: a,
+          validAnswers: validPairs,
+          expectedLength: (a.toString().length + b.toString().length),
+          isMultiFactor: isMultiFactorN3
+        };
+      }
+    }
+
+    function generateOperation() {
+      if (pendingAlternationQueue.length > 0) {
+        const turnType = pendingAlternationQueue.shift();
+        let selectedPair;
+
+        if (turnType === 'TARGET') {
+          selectedPair = opInAlternation;
+        } else {
+          selectedPair = getRandomEasyOrConsolidatedOp();
+        }
+
+        currentOpKey = selectedPair.key;
+        previousOpKey = selectedPair.key;
+        return buildOpObjectFromPair(selectedPair.x, selectedPair.y);
+      }
+
+      let selected;
+
+      if (currentLevel === 1 && currentPhase === 1) {
+        if (diagnosticQueue.length > 0) {
+          let item = diagnosticQueue.shift();
+          selected = {
+            key: `${item.x}x${item.y}`,
+            x: item.x,
+            y: item.y
+          };
+        } else {
+          evaluateDiagnosticAndTransition();
+          return generateOperation();
+        }
+      } else {
+        const activeBlock = BLOCKS_DEF[currentBlockIndex];
+        let candidates = [];
+        
+        if (currentLevel === 1 && currentPhase === 2) {
+          for (let i = activeBlock.range[0]; i <= activeBlock.range[1]; i++) {
+            const key = `${activeBlock.table}x${i}`;
+            candidates.push({ key: key, x: activeBlock.table, y: i, weight: opStats[key] ? opStats[key].weight : 0.60 });
+          }
+          for (let key in opStats) {
+            if (opStats[key].inErrorBag) {
+              let parts = key.split('x');
+              let tx = parseInt(parts[0]);
+              let ty = parseInt(parts[1]);
+              if (!candidates.some(c => c.key === key)) {
+                candidates.push({ key: key, x: tx, y: ty, weight: 1.20 });
+              }
+            }
+          }
+        } else {
+          if (currentLevel > 1 || activeBlock.table === "ALL") {
+            for (let t = 2; t <= 9; t++) {
+              for (let i = 1; i <= 10; i++) {
+                const key = `${t}x${i}`;
+                candidates.push({ key: key, x: t, y: i, weight: opStats[key] ? opStats[key].weight : 0.60 });
+              }
+            }
+          } else {
+            for (let i = activeBlock.range[0]; i <= activeBlock.range[1]; i++) {
+              const key = `${activeBlock.table}x${i}`;
+              candidates.push({ key: key, x: activeBlock.table, y: i, weight: opStats[key] ? opStats[key].weight : 0.60 });
+            }
+          }
+        }
+
+        if (previousOpKey && candidates.length > 1) {
+          const filtered = candidates.filter(c => c.key !== previousOpKey);
+          if (filtered.length > 0) candidates = filtered;
+        }
+
+        const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
+        let randomVal = Math.random() * totalWeight;
+        
+        selected = candidates[0];
+        for (let c of candidates) {
+          if (randomVal <= c.weight) {
+            selected = c;
+            break;
+          }
+          randomVal -= c.weight;
+        }
+      }
+
+      previousOpKey = selected.key;
+      currentOpKey = selected.key;
+
+      return buildOpObjectFromPair(selected.x, selected.y);
+    }
+
+    function renderOperation() {
+      stopHiddenTimer();
+      isProcessing = false;
+      
+      const inputEl = document.getElementById('user-input');
+      inputEl.value = '';
+
+      currentOp = generateOperation();
+      document.getElementById('op-text').innerText = currentOp.text;
+
+      currentOp.startTime = Date.now();
+
+      let limit = currentOp.isMultiFactor ? (dynamicTimeLimit + MULTI_FACTOR_EXTRA_TIME_MS) : dynamicTimeLimit;
+      startHiddenTimer(limit);
+    }
+
+    function pressKey(key) {
+      if (isProcessing) return;
+
+      const inputEl = document.getElementById('user-input');
+
+      if (key === 'back') {
+        inputEl.value = inputEl.value.slice(0, -1);
+        return;
+      }
+
+      const targetLen = currentOp.expectedLength || currentOp.answer.length;
+
+      if (inputEl.value.length < targetLen) {
+        inputEl.value += key;
+      }
+
+      if (inputEl.value.length === targetLen) {
+        stopHiddenTimer();
+        const userVal = inputEl.value;
+        const isCorrect = currentOp.validAnswers ? currentOp.validAnswers.includes(userVal) : (userVal === currentOp.answer);
+        processAnswerResult(isCorrect);
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (isProcessing) return;
+      if (e.key >= '0' && e.key <= '9') {
+        pressKey(e.key);
+      } else if (e.key === 'Backspace') {
+        pressKey('back');
+      }
+    });
+
+    function processAnswerResult(isCorrect) {
+      isProcessing = true;
+      stopHiddenTimer();
+      const stat = opStats[currentOpKey];
+      
+      sessionStats.totalAttempts++;
+      stat.attempts++;
+
+      // Acumulado por tabla (2-9) de esta sesión, para el desglose que se envía al registro
+      const tablaOp = currentOp.table;
+      if (tablaOp && tablaOp !== "ALL" && sessionTableStats[tablaOp]) {
+        if (isCorrect) {
+          sessionTableStats[tablaOp].aciertos++;
+        } else {
+          sessionTableStats[tablaOp].fallos++;
+        }
+      }
+
+      if (isCorrect) {
+        sessionStats.totalSuccesses++;
+        stat.successes++;
+
+        const responseTime = Date.now() - currentOp.startTime;
+        recentResponseTimes.push(responseTime);
+        if (recentResponseTimes.length > 5) {
+          recentResponseTimes.shift(); 
+        }
+        const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
+        dynamicTimeLimit = Math.max(2500, Math.round(avgTime + 1000)); 
+
+        if (stat.inErrorBag) {
+          stat.inErrorBag = false;
+        } else {
+          if (stat.cleanStreak < REQUIRED_CLEAN_STREAK) {
+            stat.cleanStreak++;
+            if (stat.cleanStreak === REQUIRED_CLEAN_STREAK) {
+              stat.weight = 0.30;
+            }
+          } else {
+            stat.weight = Math.max(0.05, stat.weight * 0.90);
+          }
+        }
+
+        saveProgress();
+        triggerSuccessModal();
+
+        setTimeout(() => {
+          closeModal();
+          if (currentLevel === 1 && currentPhase === 2 && checkBlockCompletion()) {
+            if (currentBlockIndex < BLOCKS_DEF.length - 1) {
+              currentBlockIndex++;
+              previousOpKey = null;
+              saveProgress();
+              renderOperation();
+              return;
+            } else {
+              currentPhase = 3;
+              saveProgress();
+            }
+          }
+          renderOperation();
+        }, SUCCESS_PAUSE_MS);
+
+      } else {
+        sessionStats.totalFailures++;
+        stat.inErrorBag = true;
+        if (!stat.failureSessions) stat.failureSessions = [];
+        stat.failureSessions.push(currentSessionId);
+        
+        stat.totalFailuresAcc = (stat.totalFailuresAcc || 0) + 1;
+        stat.weight = Math.min(1.50, stat.weight + 0.10);
+        saveProgress();
+
+        triggerCorrectionModal();
+
+        setTimeout(() => {
+          closeModal();
+          
+          if (stat.totalFailuresAcc >= 3) {
+            triggerSingleFactStudyModal(currentOpKey);
+          } else {
+            renderOperation();
+          }
+        }, ERROR_PAUSE_MS);
+      }
+    }
+
+    function checkBlockCompletion() {
+      const activeBlock = BLOCKS_DEF[currentBlockIndex];
+      if (activeBlock.table === "ALL") return false;
+
+      let blockAttempts = 0;
+      let blockSuccesses = 0;
+      let allClean = true;
+
+      for (let i = activeBlock.range[0]; i <= activeBlock.range[1]; i++) {
+        const key = `${activeBlock.table}x${i}`;
+        if (!opStats[key] || opStats[key].cleanStreak < REQUIRED_CLEAN_STREAK) {
+          allClean = false;
+        }
+        if (opStats[key]) {
+          blockAttempts += opStats[key].attempts;
+          blockSuccesses += opStats[key].successes;
+        }
+      }
+
+      const accuracy = blockAttempts > 0 ? (blockSuccesses / blockAttempts) * 100 : 0;
+      return allClean && (accuracy >= 85);
+    }
+
+    function triggerSuccessModal() {
+      const modal = document.getElementById('app-modal');
+      const titleEl = document.getElementById('modal-title');
+      const contentEl = document.getElementById('modal-content');
+      const btnEl = document.getElementById('continue-modal-btn');
+
+      titleEl.classList.add('hidden');
+      btnEl.classList.add('hidden');
+
+      let motivationalHtml = '';
+      if (sessionStats.totalSuccesses > 0 && sessionStats.totalSuccesses % MOTIVATIONAL_EVERY_N_SUCCESSES === 0) {
+        const msg = MOTIVATIONAL_MESSAGES[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)];
+        motivationalHtml = `<div class="card-subtitle success" style="margin-top:6px;">${msg}</div>`;
+      }
+
+      contentEl.innerHTML = `
+        <div class="success-box">
+          ${currentOp.correctDisplay}
+          <div class="card-subtitle success">✓ ¡Correcto!</div>
+        </div>
+        ${motivationalHtml}
+      `;
+
+      modal.classList.remove('hidden');
+    }
+
+    function triggerCorrectionModal() {
+      const modal = document.getElementById('app-modal');
+      const titleEl = document.getElementById('modal-title');
+      const contentEl = document.getElementById('modal-content');
+      const btnEl = document.getElementById('continue-modal-btn');
+
+      titleEl.classList.add('hidden');
+      btnEl.classList.add('hidden');
+
+      contentEl.innerHTML = `
+        <div class="correction-box">
+          ${currentOp.correctDisplay}
+          <div class="card-subtitle error">✕ Respuesta incorrecta</div>
+        </div>
+      `;
+
+      modal.classList.remove('hidden');
+    }
+
+    function triggerSingleFactStudyModal(opKey) {
+      const modal = document.getElementById('app-modal');
+      const titleEl = document.getElementById('modal-title');
+      const contentEl = document.getElementById('modal-content');
+      const btnEl = document.getElementById('continue-modal-btn');
+
+      titleEl.innerText = "💡 MEMORIZA ESTA OPERACIÓN";
+      titleEl.classList.remove('hidden');
+
+      let parts = opKey.split('x');
+      let x = parseInt(parts[0]);
+      let y = parseInt(parts[1]);
+      let factDisplay = buildOpObjectFromPair(x, y).correctDisplay;
+
+      opInAlternation = { key: opKey, x: x, y: y };
+      pendingAlternationQueue = ['EASY', 'TARGET', 'EASY', 'TARGET', 'EASY', 'TARGET'];
+
+      if (opStats[opKey]) {
+        opStats[opKey].totalFailuresAcc = 0;
+        saveProgress();
+      }
+
+      pendingNextStep = renderOperation;
+
+      const html = `
+        <div class="study-instruction">
+          📖 Lee esta operación varias veces en voz alta e intenta memorizarla. Haz clic en continuar cuando estés listo.
+        </div>
+        <div class="single-fact-box">
+          ${factDisplay}
+        </div>
+      `;
+
+      contentEl.innerHTML = html;
+      btnEl.classList.remove('hidden');
+      modal.classList.remove('hidden');
+
+      let countdown = 6;
+      btnEl.disabled = true;
+      btnEl.innerText = `MEMORIZA LA OPERACIÓN (${countdown}s)`;
+
+      if (studyTimerInterval) clearInterval(studyTimerInterval);
+
+      studyTimerInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          btnEl.innerText = `MEMORIZA LA OPERACIÓN (${countdown}s)`;
+        } else {
+          clearInterval(studyTimerInterval);
+          btnEl.disabled = false;
+          btnEl.innerText = "CONTINUAR →";
+        }
+      }, 1000);
+    }
+
+    function closeModal() {
+      document.getElementById('app-modal').classList.add('hidden');
+      if (studyTimerInterval) clearInterval(studyTimerInterval);
+    }
+
+    function onContinueModalClick() {
+      closeModal();
+      if (pendingNextStep) {
+        const fn = pendingNextStep;
+        pendingNextStep = null;
+        fn();
+      }
+    }
+
+    window.onload = function() {
+      initProgress();
+    };
+  </script>
+</body>
+</html>
