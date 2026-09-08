@@ -106,6 +106,20 @@
       gap: 8px;
     }
 
+    .factor-blank {
+      display: inline-block;
+      min-width: 1.1ch;
+      border-bottom: 4px solid var(--primary, #00796B);
+      padding: 0 4px;
+      color: var(--primary, #00796B);
+    }
+
+    .dual-factor-row {
+      font-size: 2.1rem;
+      font-weight: bold;
+      margin: 6px 0;
+    }
+
     .input-box {
       font-size: 2.3rem;
       width: 200px;
@@ -1134,7 +1148,18 @@
 
     function onTimeOut() {
       if (isProcessing) return;
-      processAnswerResult(false);
+      if (currentOp && currentOp.isDualFactor) {
+        // Se acabó el tiempo: la fila en curso (y la que no llegó a intentarse) cuentan como falladas
+        currentOp.subOps.forEach(sub => {
+          if (sub.correcto === null) {
+            sub.correcto = false;
+            aplicarResultadoAFact(sub.opKey, false);
+          }
+        });
+        finalizarDualFactor(false);
+      } else {
+        processAnswerResult(false);
+      }
     }
 
     function getRandomEasyOrConsolidatedOp() {
@@ -1182,7 +1207,11 @@
           isMultiFactor: false
         };
       } else {
-        const isMultiFactorN3 = [36, 24, 16, 12].includes(product);
+        const paresMultiples = MULTI_FACTOR_PAIRS[product];
+        if (paresMultiples) {
+          return buildDualFactorOp(product, paresMultiples);
+        }
+
         let validPairs = [`${a}${b}`, `${b}${a}`];
         let correctText = `${product} = ${a} × ${b}`;
 
@@ -1193,9 +1222,60 @@
           table: a,
           validAnswers: validPairs,
           expectedLength: (a.toString().length + b.toString().length),
-          isMultiFactor: isMultiFactorN3
+          factorALen: a.toString().length,
+          factorBLen: b.toString().length,
+          product: product,
+          isMultiFactor: false
         };
       }
+    }
+
+    // Productos con más de una factorización válida dentro de las tablas 2-9
+    // (calculado una vez al cargar, no a mano, para no dejarse ninguno).
+    const MULTI_FACTOR_PAIRS = (function () {
+      const porProducto = {};
+      for (let x = 2; x <= 9; x++) {
+        for (let y = 2; y <= 9; y++) {
+          const p = x * y;
+          const par = [x, y].sort((m, n) => m - n);
+          if (!porProducto[p]) porProducto[p] = [];
+          const yaEsta = porProducto[p].some(([a2, b2]) => a2 === par[0] && b2 === par[1]);
+          if (!yaEsta) porProducto[p].push(par);
+        }
+      }
+      const resultado = {};
+      Object.keys(porProducto).forEach(p => {
+        if (porProducto[p].length > 1) resultado[p] = porProducto[p];
+      });
+      return resultado;
+    })();
+
+    // Construye una operación de doble factorización: dos filas "producto = _ × _",
+    // hay que acertar las DOS para que cuente como correcta, y refuerza TODAS las
+    // tablas implicadas (p.ej. 36 refuerza a la vez la tabla del 4 y la del 6).
+    function buildDualFactorOp(product, pares) {
+      const subOps = pares.map(([x, y]) => ({
+        a: x,
+        b: y,
+        factorALen: x.toString().length,
+        factorBLen: y.toString().length,
+        validAnswers: [`${x}${y}`, `${y}${x}`],
+        opKey: `${x}x${y}`,
+        typed: "",
+        correcto: null
+      }));
+      const tablasImplicadas = [...new Set(pares.flat())];
+
+      return {
+        isDualFactor: true,
+        product: product,
+        subOps: subOps,
+        subIndex: 0,
+        table: tablasImplicadas, // varias tablas a la vez
+        tables: tablasImplicadas,
+        correctDisplay: pares.map(([x, y]) => `${product} = ${x} × ${y}`).join('<br>'),
+        isMultiFactor: true
+      };
     }
 
     function generateOperation() {
@@ -1295,7 +1375,27 @@
       inputEl.value = '';
 
       currentOp = generateOperation();
-      document.getElementById('op-text').innerText = currentOp.text;
+
+      const opTextEl = document.getElementById('op-text');
+      if (currentOp.isDualFactor) {
+        // Dos filas: hay que acertar las dos para que cuente como correcta
+        const filas = currentOp.subOps.map((sub, idx) => `
+          <div class="dual-factor-row" id="dual-row-${idx}">
+            ${currentOp.product} = <span id="blank-a${idx}" class="factor-blank">${'_'.repeat(sub.factorALen)}</span>
+            × <span id="blank-b${idx}" class="factor-blank">${'_'.repeat(sub.factorBLen)}</span>
+          </div>
+        `).join('');
+        opTextEl.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; gap:6px;">${filas}</div>`;
+        inputEl.classList.add('hidden');
+      } else if (currentLevel === 3 && currentOp.factorALen) {
+        // Nivel 3: los dígitos se van insertando dentro del propio "_ × _" según se escriben
+        opTextEl.innerHTML =
+          `${currentOp.product} = <span id="blank-a" class="factor-blank">${'_'.repeat(currentOp.factorALen)}</span> × <span id="blank-b" class="factor-blank">${'_'.repeat(currentOp.factorBLen)}</span>`;
+        inputEl.classList.add('hidden');
+      } else {
+        opTextEl.innerText = currentOp.text;
+        inputEl.classList.remove('hidden');
+      }
 
       currentOp.startTime = Date.now();
 
@@ -1303,13 +1403,43 @@
       startHiddenTimer(limit);
     }
 
+    // Actualiza los huecos "_ × _" del nivel 3 (una sola factorización) según los dígitos ya escritos
+    function updateFactorBlanks() {
+      const val = document.getElementById('user-input').value;
+      const aLen = currentOp.factorALen;
+      const bLen = currentOp.factorBLen;
+      const aTyped = val.slice(0, aLen);
+      const bTyped = val.slice(aLen, aLen + bLen);
+      const blankA = document.getElementById('blank-a');
+      const blankB = document.getElementById('blank-b');
+      if (blankA) blankA.innerText = (aTyped + '_'.repeat(aLen)).slice(0, aLen);
+      if (blankB) blankB.innerText = (bTyped + '_'.repeat(bLen)).slice(0, bLen);
+    }
+
+    // Igual que la anterior, pero para la fila activa (idx) de una doble factorización
+    function updateDualBlanks(idx) {
+      const sub = currentOp.subOps[idx];
+      const aTyped = sub.typed.slice(0, sub.factorALen);
+      const bTyped = sub.typed.slice(sub.factorALen, sub.factorALen + sub.factorBLen);
+      const blankA = document.getElementById(`blank-a${idx}`);
+      const blankB = document.getElementById(`blank-b${idx}`);
+      if (blankA) blankA.innerText = (aTyped + '_'.repeat(sub.factorALen)).slice(0, sub.factorALen);
+      if (blankB) blankB.innerText = (bTyped + '_'.repeat(sub.factorBLen)).slice(0, sub.factorBLen);
+    }
+
     function pressKey(key) {
-      if (isProcessing) return;
+      if (isProcessing || !currentOp) return;
+
+      if (currentOp.isDualFactor) {
+        pressKeyDual(key);
+        return;
+      }
 
       const inputEl = document.getElementById('user-input');
 
       if (key === 'back') {
         inputEl.value = inputEl.value.slice(0, -1);
+        if (currentLevel === 3 && currentOp.factorALen) updateFactorBlanks();
         return;
       }
 
@@ -1319,11 +1449,46 @@
         inputEl.value += key;
       }
 
+      if (currentLevel === 3 && currentOp.factorALen) updateFactorBlanks();
+
       if (inputEl.value.length === targetLen) {
         stopHiddenTimer();
         const userVal = inputEl.value;
         const isCorrect = currentOp.validAnswers ? currentOp.validAnswers.includes(userVal) : (userVal === currentOp.answer);
         processAnswerResult(isCorrect);
+      }
+    }
+
+    // Maneja la escritura dentro de una doble factorización (dos filas seguidas)
+    function pressKeyDual(key) {
+      const idx = currentOp.subIndex;
+      const sub = currentOp.subOps[idx];
+
+      if (key === 'back') {
+        sub.typed = sub.typed.slice(0, -1);
+        updateDualBlanks(idx);
+        return;
+      }
+
+      const targetLen = sub.factorALen + sub.factorBLen;
+      if (sub.typed.length < targetLen) {
+        sub.typed += key;
+      }
+      updateDualBlanks(idx);
+
+      if (sub.typed.length === targetLen) {
+        sub.correcto = sub.validAnswers.includes(sub.typed);
+        aplicarResultadoAFact(sub.opKey, sub.correcto);
+
+        if (idx === 0) {
+          // Pasamos a la segunda fila, con tiempo fresco para responderla
+          currentOp.subIndex = 1;
+          const limit = dynamicTimeLimit + MULTI_FACTOR_EXTRA_TIME_MS;
+          startHiddenTimer(limit);
+        } else {
+          const ambasCorrectas = currentOp.subOps[0].correcto && currentOp.subOps[1].correcto;
+          finalizarDualFactor(ambasCorrectas);
+        }
       }
     }
 
@@ -1336,13 +1501,84 @@
       }
     });
 
+    // Actualiza cleanStreak/weight/inErrorBag/etc. de UN hecho concreto (p.ej. "4x9").
+    // Se usa tanto en preguntas normales como, dos veces, en las de doble factorización.
+    function aplicarResultadoAFact(opKey, isCorrect) {
+      const stat = opStats[opKey];
+      if (!stat) return;
+      stat.attempts++;
+      if (isCorrect) {
+        stat.successes++;
+        if (stat.inErrorBag) {
+          stat.inErrorBag = false;
+        } else {
+          if (stat.cleanStreak < REQUIRED_CLEAN_STREAK) {
+            stat.cleanStreak++;
+            if (stat.cleanStreak === REQUIRED_CLEAN_STREAK) {
+              stat.weight = 0.30;
+            }
+          } else {
+            stat.weight = Math.max(0.05, stat.weight * 0.90);
+          }
+        }
+      } else {
+        stat.inErrorBag = true;
+        if (!stat.failureSessions) stat.failureSessions = [];
+        stat.failureSessions.push(currentSessionId);
+        stat.totalFailuresAcc = (stat.totalFailuresAcc || 0) + 1;
+        stat.weight = Math.min(1.50, stat.weight + 0.10);
+      }
+    }
+
+    // Cierra una operación de doble factorización: cuenta como UNA sola en las estadísticas
+    // de sesión, refuerza TODAS las tablas implicadas, y solo es correcta si las dos filas
+    // se acertaron.
+    function finalizarDualFactor(esCorrecto) {
+      isProcessing = true;
+      stopHiddenTimer();
+
+      sessionStats.totalAttempts++;
+
+      currentOp.tables.forEach(t => {
+        if (sessionTableStats[t]) {
+          if (esCorrecto) sessionTableStats[t].aciertos++;
+          else sessionTableStats[t].fallos++;
+        }
+      });
+
+      if (esCorrecto) {
+        sessionStats.totalSuccesses++;
+
+        const responseTime = Date.now() - currentOp.startTime;
+        recentResponseTimes.push(responseTime);
+        if (recentResponseTimes.length > 5) recentResponseTimes.shift();
+        const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
+        dynamicTimeLimit = Math.max(2500, Math.round(avgTime + 1000));
+
+        saveProgress();
+        triggerSuccessModal();
+        setTimeout(() => {
+          closeModal();
+          renderOperation();
+        }, SUCCESS_PAUSE_MS);
+      } else {
+        sessionStats.totalFailures++;
+        saveProgress();
+        triggerCorrectionModal();
+        setTimeout(() => {
+          closeModal();
+          renderOperation();
+        }, ERROR_PAUSE_MS);
+      }
+    }
+
     function processAnswerResult(isCorrect) {
       isProcessing = true;
       stopHiddenTimer();
       const stat = opStats[currentOpKey];
       
       sessionStats.totalAttempts++;
-      stat.attempts++;
+      aplicarResultadoAFact(currentOpKey, isCorrect);
 
       // Acumulado por tabla (2-9) de esta sesión, para el desglose que se envía al registro
       const tablaOp = currentOp.table;
@@ -1356,7 +1592,6 @@
 
       if (isCorrect) {
         sessionStats.totalSuccesses++;
-        stat.successes++;
 
         const responseTime = Date.now() - currentOp.startTime;
         recentResponseTimes.push(responseTime);
@@ -1365,19 +1600,6 @@
         }
         const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
         dynamicTimeLimit = Math.max(2500, Math.round(avgTime + 1000)); 
-
-        if (stat.inErrorBag) {
-          stat.inErrorBag = false;
-        } else {
-          if (stat.cleanStreak < REQUIRED_CLEAN_STREAK) {
-            stat.cleanStreak++;
-            if (stat.cleanStreak === REQUIRED_CLEAN_STREAK) {
-              stat.weight = 0.30;
-            }
-          } else {
-            stat.weight = Math.max(0.05, stat.weight * 0.90);
-          }
-        }
 
         saveProgress();
         triggerSuccessModal();
@@ -1401,12 +1623,6 @@
 
       } else {
         sessionStats.totalFailures++;
-        stat.inErrorBag = true;
-        if (!stat.failureSessions) stat.failureSessions = [];
-        stat.failureSessions.push(currentSessionId);
-        
-        stat.totalFailuresAcc = (stat.totalFailuresAcc || 0) + 1;
-        stat.weight = Math.min(1.50, stat.weight + 0.10);
         saveProgress();
 
         triggerCorrectionModal();
