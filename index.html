@@ -664,8 +664,20 @@
         currentSessionId = 1;
       }
 
-      if (!studentNumeroClase || !parentEmail || !studentCentro || !studentCurso) {
-        const qr = leerParamsQR();
+      const qr = leerParamsQR();
+      const yaRegistradoAqui = studentNumeroClase && parentEmail && studentCentro && studentCurso;
+      const esOtroAlumnoDistinto = qr && yaRegistradoAqui &&
+        (qr.centro !== studentCentro || qr.curso !== studentCurso || qr.clase !== studentNumeroClase);
+
+      if (esOtroAlumnoDistinto) {
+        // Este dispositivo ya tenía guardado a OTRO alumno; el QR escaneado es de uno distinto,
+        // así que pedimos el correo de nuevo en vez de seguir con los datos antiguos.
+        studentCentro = qr.centro;
+        studentCurso = qr.curso;
+        studentNumeroClase = qr.clase;
+        parentEmail = "";
+        showRegisterQrView();
+      } else if (!yaRegistradoAqui) {
         if (qr) {
           studentCentro = qr.centro;
           studentCurso = qr.curso;
