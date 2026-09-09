@@ -1045,9 +1045,7 @@
         const block = BLOCKS_DEF[bIndex];
         let blockOps = [];
         for (let i = block.range[0]; i <= block.range[1]; i++) {
-          if (i !== 1 && i !== 10) {
-            blockOps.push({ x: block.table, y: i, blockIdx: bIndex });
-          }
+          blockOps.push({ x: block.table, y: i, blockIdx: bIndex });
         }
         blockOps.sort(() => Math.random() - 0.5);
         const selected = blockOps.slice(0, 5);
@@ -1179,7 +1177,7 @@
 
       if (candidates.length === 0) {
         for (let t = 2; t <= 5; t++) {
-          for (let i = 1; i <= 5; i++) {
+          for (let i = 2; i <= 5; i++) {
             candidates.push({ key: `${t}x${i}`, x: t, y: i });
           }
         }
@@ -1334,7 +1332,7 @@
         } else {
           if (currentLevel > 1 || activeBlock.table === "ALL") {
             for (let t = 2; t <= 9; t++) {
-              for (let i = 1; i <= 10; i++) {
+              for (let i = 2; i <= 9; i++) {
                 const key = `${t}x${i}`;
                 candidates.push({ key: key, x: t, y: i, weight: opStats[key] ? opStats[key].weight : 0.60 });
               }
