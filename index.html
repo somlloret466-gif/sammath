@@ -476,6 +476,10 @@
     let recentResponseTimes = []; 
 
     const MULTI_FACTOR_EXTRA_TIME_MS = 3000;
+    const MIN_TIME_LIMIT_MS = 2500;   // por muy rápido que vaya, nunca menos de 2,5s
+    const MAX_TIME_LIMIT_MS = 6000;   // por muy lento que vaya, nunca más de 6s
+    const RESPUESTAS_PARA_MEDIA = 30; // se calcula sobre las últimas 30 respuestas correctas
+    const MARGEN_TIEMPO_MS = 1500;    // margen que se suma a esa media
     const SUCCESS_PAUSE_MS = 1500;
     const ERROR_PAUSE_MS = 3500;
     const REQUIRED_CLEAN_STREAK = 2;
@@ -1551,9 +1555,9 @@
 
         const responseTime = Date.now() - currentOp.startTime;
         recentResponseTimes.push(responseTime);
-        if (recentResponseTimes.length > 5) recentResponseTimes.shift();
+        if (recentResponseTimes.length > RESPUESTAS_PARA_MEDIA) recentResponseTimes.shift();
         const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
-        dynamicTimeLimit = Math.max(2500, Math.round(avgTime + 1000));
+        dynamicTimeLimit = Math.min(MAX_TIME_LIMIT_MS, Math.max(MIN_TIME_LIMIT_MS, Math.round(avgTime + MARGEN_TIEMPO_MS)));
 
         saveProgress();
         triggerSuccessModal();
@@ -1595,11 +1599,11 @@
 
         const responseTime = Date.now() - currentOp.startTime;
         recentResponseTimes.push(responseTime);
-        if (recentResponseTimes.length > 5) {
+        if (recentResponseTimes.length > RESPUESTAS_PARA_MEDIA) {
           recentResponseTimes.shift(); 
         }
         const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
-        dynamicTimeLimit = Math.max(2500, Math.round(avgTime + 1000)); 
+        dynamicTimeLimit = Math.min(MAX_TIME_LIMIT_MS, Math.max(MIN_TIME_LIMIT_MS, Math.round(avgTime + MARGEN_TIEMPO_MS))); 
 
         saveProgress();
         triggerSuccessModal();
@@ -1666,10 +1670,12 @@
       const modal = document.getElementById('app-modal');
       const titleEl = document.getElementById('modal-title');
       const contentEl = document.getElementById('modal-content');
-      const btnEl = document.getElementById('continue-modal-btn');
+      const actionsEl = document.getElementById('modal-actions');
 
       titleEl.classList.add('hidden');
-      btnEl.classList.add('hidden');
+      // Reconstruimos el botón siempre: otras pantallas (config, explicación de nivel 3...)
+      // sustituyen este contenedor por botones propios, y si no lo recreamos, deja de existir.
+      actionsEl.innerHTML = `<button class="continue-btn hidden" id="continue-modal-btn" onclick="onContinueModalClick()">CONTINUAR →</button>`;
 
       let motivationalHtml = '';
       if (sessionStats.totalSuccesses > 0 && sessionStats.totalSuccesses % MOTIVATIONAL_EVERY_N_SUCCESSES === 0) {
@@ -1692,10 +1698,10 @@
       const modal = document.getElementById('app-modal');
       const titleEl = document.getElementById('modal-title');
       const contentEl = document.getElementById('modal-content');
-      const btnEl = document.getElementById('continue-modal-btn');
+      const actionsEl = document.getElementById('modal-actions');
 
       titleEl.classList.add('hidden');
-      btnEl.classList.add('hidden');
+      actionsEl.innerHTML = `<button class="continue-btn hidden" id="continue-modal-btn" onclick="onContinueModalClick()">CONTINUAR →</button>`;
 
       contentEl.innerHTML = `
         <div class="correction-box">
@@ -1711,6 +1717,8 @@
       const modal = document.getElementById('app-modal');
       const titleEl = document.getElementById('modal-title');
       const contentEl = document.getElementById('modal-content');
+      const actionsEl = document.getElementById('modal-actions');
+      actionsEl.innerHTML = `<button class="continue-btn" id="continue-modal-btn" onclick="onContinueModalClick()">CONTINUAR →</button>`;
       const btnEl = document.getElementById('continue-modal-btn');
 
       titleEl.innerText = "💡 MEMORIZA ESTA OPERACIÓN";
