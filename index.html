@@ -416,6 +416,21 @@
         <div class="level-btn" onclick="selectLevel(3)">
           <div class="level-name">3 Factorización</div>
         </div>
+        <div class="level-btn" onclick="selectLevel(4)">
+          <div class="level-name">4 Sumas</div>
+        </div>
+        <div class="level-btn" onclick="selectLevel(5)">
+          <div class="level-name">5 Restas</div>
+        </div>
+        <div class="level-btn" onclick="selectLevel(6)">
+          <div class="level-name">6 Sumas con enteros</div>
+        </div>
+        <div class="level-btn" onclick="selectLevel(7)">
+          <div class="level-name">7 Multiplicación con enteros</div>
+        </div>
+        <div class="level-btn" onclick="selectLevel(8)">
+          <div class="level-name">8 Combinado (enteros)</div>
+        </div>
       </div>
 
       <button class="secondary-btn" style="margin-top: 8px;" onclick="openEmailConfigModal()">⚙️ Configurar Datos</button>
@@ -441,7 +456,7 @@
         <button class="key-btn" onclick="pressKey('7')">7</button>
         <button class="key-btn" onclick="pressKey('8')">8</button>
         <button class="key-btn" onclick="pressKey('9')">9</button>
-        <button class="key-btn empty-btn"></button>
+        <button class="key-btn hidden" id="key-minus" onclick="pressKey('-')">−</button>
         <button class="key-btn" onclick="pressKey('0')">0</button>
         <button class="key-btn action-btn" onclick="pressKey('back')">⌫</button>
       </div>
@@ -660,6 +675,12 @@
           studentCurso = user.studentCurso || "";
 
           opStats = user.opStats || {};
+          statsSimples = user.statsSimples || {
+            sumas: { attempts: 0, successes: 0 },
+            restas: { attempts: 0, successes: 0 },
+            sumasEnteros: { attempts: 0, successes: 0 },
+            multEnteros: { attempts: 0, successes: 0 }
+          };
           sessionHistory = user.sessionHistory || [];
           
           const lastSessionId = user.currentSessionId || 1;
@@ -866,6 +887,7 @@
         studentCentro: studentCentro,
         studentCurso: studentCurso,
         opStats: opStats,
+        statsSimples: statsSimples,
         sessionHistory: sessionHistory,
         lastUpdated: new Date().toISOString()
       };
@@ -888,6 +910,13 @@
       for (let t = 2; t <= 9; t++) {
         sessionTableStats[t] = { aciertos: 0, fallos: 0 };
       }
+      // Igual, pero para los niveles 4-8 (cálculo mental simple)
+      sessionSimpleStats = {
+        sumas: { aciertos: 0, fallos: 0 },
+        restas: { aciertos: 0, fallos: 0 },
+        sumasEnteros: { aciertos: 0, fallos: 0 },
+        multEnteros: { aciertos: 0, fallos: 0 }
+      };
 
       sessionInterval = setInterval(() => {
         sessionSecondsRemaining--;
@@ -969,6 +998,13 @@
         payload[`t${t}_a`] = st.aciertos;
         payload[`t${t}_f`] = st.fallos;
       }
+
+      // Aciertos/fallos de ESTA sesión en los niveles 4-8 (cálculo mental simple, agregado)
+      ['sumas', 'restas', 'sumasEnteros', 'multEnteros'].forEach(k => {
+        const st = sessionSimpleStats[k] || { aciertos: 0, fallos: 0 };
+        payload[`${k}_a`] = st.aciertos;
+        payload[`${k}_f`] = st.fallos;
+      });
 
       // Guardamos también en el historial local (respaldo) para futuras comparativas
       sessionHistory.push({
@@ -1159,6 +1195,8 @@
           }
         });
         finalizarDualFactor(false);
+      } else if (currentOp && currentOp.nivelSimple) {
+        processSimpleLevelResult(false);
       } else {
         processAnswerResult(false);
       }
@@ -1280,7 +1318,127 @@
       };
     }
 
+    // ===== NIVELES 4-8: cálculo mental simple (sin tablas, sin bloques, sin diagnóstico) =====
+    // Estadísticas agregadas por nivel (no por número/hecho concreto, según lo pedido).
+    let statsSimples = {
+      sumas: { attempts: 0, successes: 0 },
+      restas: { attempts: 0, successes: 0 },
+      sumasEnteros: { attempts: 0, successes: 0 },
+      multEnteros: { attempts: 0, successes: 0 }
+    };
+
+    // Igual que sessionTableStats, pero para estos 4 niveles (se reinicia cada sesión)
+    let sessionSimpleStats = {
+      sumas: { aciertos: 0, fallos: 0 },
+      restas: { aciertos: 0, fallos: 0 },
+      sumasEnteros: { aciertos: 0, fallos: 0 },
+      multEnteros: { aciertos: 0, fallos: 0 }
+    };
+
+    const NIVELES_CON_SIGNO = [6, 7, 8];
+
+    // Tiempo adaptativo POR NIVEL (cada uno tiene su propio ritmo, no comparten con las tablas)
+    let dynamicTimeLimitsSimples = {
+      sumas: 3000,
+      restas: 3500,
+      sumasEnteros: 4000,
+      multEnteros: 4500
+    };
+    let recentResponseTimesSimples = {
+      sumas: [], restas: [], sumasEnteros: [], multEnteros: []
+    };
+
+    function actualizarTiempoAdaptativoSimple(nivelSimpleKey, minT, maxT, responseTime) {
+      const lista = recentResponseTimesSimples[nivelSimpleKey];
+      lista.push(responseTime);
+      if (lista.length > RESPUESTAS_PARA_MEDIA) lista.shift();
+      const avg = lista.reduce((a, b) => a + b, 0) / lista.length;
+      dynamicTimeLimitsSimples[nivelSimpleKey] = Math.min(maxT, Math.max(minT, Math.round(avg + MARGEN_TIEMPO_MS)));
+    }
+
+    function generarSumas() {
+      const a = 1 + Math.floor(Math.random() * 9);
+      const b = 1 + Math.floor(Math.random() * 9);
+      const r = a + b;
+      return {
+        text: `${a} + ${b} = _`,
+        answer: `${r}`,
+        correctDisplay: `${a} + ${b} = ${r}`,
+        nivelSimple: "sumas",
+        minTime: 2000,
+        maxTime: 4000
+      };
+    }
+
+    function generarRestas() {
+      let a, b, r;
+      do {
+        b = 1 + Math.floor(Math.random() * 9);
+        r = Math.floor(Math.random() * 10); // 0-9, el resultado puede ser 0
+        a = b + r;
+      } while (a > 18);
+      return {
+        text: `${a} - ${b} = _`,
+        answer: `${r}`,
+        correctDisplay: `${a} - ${b} = ${r}`,
+        nivelSimple: "restas",
+        minTime: 2500,
+        maxTime: 5000
+      };
+    }
+
+    function generarSumaEnteros() {
+      let a, b, r;
+      do {
+        a = Math.floor(Math.random() * 19) - 9; // -9..9
+        b = Math.floor(Math.random() * 19) - 9; // -9..9
+        r = a + b;
+      } while (r < -9 || r > 9);
+      const bTexto = b < 0 ? `(${b})` : `${b}`;
+      return {
+        text: `${a} + ${bTexto} = _`,
+        answer: `${r}`,
+        correctDisplay: `${a} + ${bTexto} = ${r}`,
+        nivelSimple: "sumasEnteros",
+        minTime: 2500,
+        maxTime: 6000
+      };
+    }
+
+    function generarMultEnteros() {
+      const a = Math.floor(Math.random() * 19) - 9; // -9..9, incluye el 0
+      const b = Math.floor(Math.random() * 19) - 9;
+      const r = a * b;
+      const bTexto = b < 0 ? `(${b})` : `${b}`;
+      return {
+        text: `${a} × ${bTexto} = _`,
+        answer: `${r}`,
+        correctDisplay: `${a} × ${bTexto} = ${r}`,
+        nivelSimple: "multEnteros",
+        minTime: 3000,
+        maxTime: 7000
+      };
+    }
+
+    function generarCombinado() {
+      return Math.random() < 0.5 ? generarSumaEnteros() : generarMultEnteros();
+    }
+
+    function generateSimpleLevelOperation() {
+      switch (currentLevel) {
+        case 4: return generarSumas();
+        case 5: return generarRestas();
+        case 6: return generarSumaEnteros();
+        case 7: return generarMultEnteros();
+        case 8: return generarCombinado();
+      }
+    }
+
     function generateOperation() {
+      if (currentLevel >= 4) {
+        return generateSimpleLevelOperation();
+      }
+
       if (pendingAlternationQueue.length > 0) {
         const turnType = pendingAlternationQueue.shift();
         let selectedPair;
@@ -1399,9 +1557,24 @@
         inputEl.classList.remove('hidden');
       }
 
+      // Tecla del signo "-": solo visible en los niveles con números enteros (6, 7, 8)
+      const minusKey = document.getElementById('key-minus');
+      if (minusKey) {
+        if (NIVELES_CON_SIGNO.includes(currentLevel)) {
+          minusKey.classList.remove('hidden');
+        } else {
+          minusKey.classList.add('hidden');
+        }
+      }
+
       currentOp.startTime = Date.now();
 
-      let limit = currentOp.isMultiFactor ? (dynamicTimeLimit + MULTI_FACTOR_EXTRA_TIME_MS) : dynamicTimeLimit;
+      let limit;
+      if (currentOp.nivelSimple) {
+        limit = dynamicTimeLimitsSimples[currentOp.nivelSimple];
+      } else {
+        limit = currentOp.isMultiFactor ? (dynamicTimeLimit + MULTI_FACTOR_EXTRA_TIME_MS) : dynamicTimeLimit;
+      }
       startHiddenTimer(limit);
     }
 
@@ -1445,6 +1618,14 @@
         return;
       }
 
+      if (key === '-') {
+        // El signo negativo solo vale como primer carácter, y solo en niveles con enteros
+        if (NIVELES_CON_SIGNO.includes(currentLevel) && inputEl.value.length === 0) {
+          inputEl.value = '-';
+        }
+        return;
+      }
+
       const targetLen = currentOp.expectedLength || currentOp.answer.length;
 
       if (inputEl.value.length < targetLen) {
@@ -1457,7 +1638,11 @@
         stopHiddenTimer();
         const userVal = inputEl.value;
         const isCorrect = currentOp.validAnswers ? currentOp.validAnswers.includes(userVal) : (userVal === currentOp.answer);
-        processAnswerResult(isCorrect);
+        if (currentOp.nivelSimple) {
+          processSimpleLevelResult(isCorrect);
+        } else {
+          processAnswerResult(isCorrect);
+        }
       }
     }
 
@@ -1500,6 +1685,8 @@
         pressKey(e.key);
       } else if (e.key === 'Backspace') {
         pressKey('back');
+      } else if (e.key === '-' || e.key === 'Minus' || e.key === 'Subtract') {
+        pressKey('-');
       }
     });
 
@@ -1556,6 +1743,46 @@
         if (recentResponseTimes.length > RESPUESTAS_PARA_MEDIA) recentResponseTimes.shift();
         const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
         dynamicTimeLimit = Math.min(MAX_TIME_LIMIT_MS, Math.max(MIN_TIME_LIMIT_MS, Math.round(avgTime + MARGEN_TIEMPO_MS)));
+
+        saveProgress();
+        triggerSuccessModal();
+        setTimeout(() => {
+          closeModal();
+          renderOperation();
+        }, SUCCESS_PAUSE_MS);
+      } else {
+        sessionStats.totalFailures++;
+        saveProgress();
+        triggerCorrectionModal();
+        setTimeout(() => {
+          closeModal();
+          renderOperation();
+        }, ERROR_PAUSE_MS);
+      }
+    }
+
+    // Resultado de una pregunta de los niveles 4-8 (cálculo mental simple). Estadística
+    // agregada propia de cada nivel, sin tocar opStats (eso es solo de las tablas).
+    function processSimpleLevelResult(isCorrect) {
+      isProcessing = true;
+
+      const key = currentOp.nivelSimple;
+      const stat = statsSimples[key];
+
+      sessionStats.totalAttempts++;
+      stat.attempts++;
+
+      if (sessionSimpleStats[key]) {
+        if (isCorrect) sessionSimpleStats[key].aciertos++;
+        else sessionSimpleStats[key].fallos++;
+      }
+
+      if (isCorrect) {
+        sessionStats.totalSuccesses++;
+        stat.successes++;
+
+        const responseTime = Date.now() - currentOp.startTime;
+        actualizarTiempoAdaptativoSimple(key, currentOp.minTime, currentOp.maxTime, responseTime);
 
         saveProgress();
         triggerSuccessModal();
