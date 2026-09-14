@@ -1394,11 +1394,15 @@
         b = Math.floor(Math.random() * 19) - 9; // -9..9
         r = a + b;
       } while (r < -9 || r > 9);
-      const bTexto = b < 0 ? `(${b})` : `${b}`;
+
+      // "3 + (-2)" nunca se muestra así: si el segundo número es negativo,
+      // se escribe directamente como una resta ("3 - 2").
+      const textoOperacion = b < 0 ? `${a} - ${Math.abs(b)}` : `${a} + ${b}`;
+
       return {
-        text: `${a} + ${bTexto} = _`,
+        text: `${textoOperacion} = _`,
         answer: `${r}`,
-        correctDisplay: `${a} + ${bTexto} = ${r}`,
+        correctDisplay: `${textoOperacion} = ${r}`,
         nivelSimple: "sumasEnteros",
         minTime: 2500,
         maxTime: 6000
@@ -1410,10 +1414,12 @@
       const b = Math.floor(Math.random() * 19) - 9;
       const r = a * b;
       const bTexto = b < 0 ? `(${b})` : `${b}`;
+      // Punto de multiplicar ("·"), no "×"
+      const textoOperacion = `${a} · ${bTexto}`;
       return {
-        text: `${a} × ${bTexto} = _`,
+        text: `${textoOperacion} = _`,
         answer: `${r}`,
-        correctDisplay: `${a} × ${bTexto} = ${r}`,
+        correctDisplay: `${textoOperacion} = ${r}`,
         nivelSimple: "multEnteros",
         minTime: 3000,
         maxTime: 7000
