@@ -681,6 +681,10 @@
             sumasEnteros: { attempts: 0, successes: 0 },
             multEnteros: { attempts: 0, successes: 0 }
           };
+          statsFactosSimples = user.statsFactosSimples || {};
+          erroresSumaEnteros = user.erroresSumaEnteros || 0;
+          erroresMultEnterosMagnitud = user.erroresMultEnterosMagnitud || 0;
+          erroresMultEnterosSigno = user.erroresMultEnterosSigno || 0;
           sessionHistory = user.sessionHistory || [];
           
           const lastSessionId = user.currentSessionId || 1;
@@ -888,6 +892,10 @@
         studentCurso: studentCurso,
         opStats: opStats,
         statsSimples: statsSimples,
+        statsFactosSimples: statsFactosSimples,
+        erroresSumaEnteros: erroresSumaEnteros,
+        erroresMultEnterosMagnitud: erroresMultEnterosMagnitud,
+        erroresMultEnterosSigno: erroresMultEnterosSigno,
         sessionHistory: sessionHistory,
         lastUpdated: new Date().toISOString()
       };
@@ -1365,6 +1373,7 @@
         answer: `${r}`,
         correctDisplay: `${a} + ${b} = ${r}`,
         nivelSimple: "sumas",
+        factKey: `${a}+${b}`,
         minTime: 2000,
         maxTime: 4000
       };
@@ -1382,6 +1391,7 @@
         answer: `${r}`,
         correctDisplay: `${a} - ${b} = ${r}`,
         nivelSimple: "restas",
+        factKey: `${a}-${b}`,
         minTime: 2500,
         maxTime: 5000
       };
@@ -1769,6 +1779,67 @@
 
     // Resultado de una pregunta de los niveles 4-8 (cálculo mental simple). Estadística
     // agregada propia de cada nivel, sin tocar opStats (eso es solo de las tablas).
+    // ===== Memorización y avisos de los niveles 4-8 =====
+    const STUDY_PAUSE_MS_SIMPLE = 7000; // tiempo extra en pantalla para memorizar/leer el aviso
+
+    let statsFactosSimples = {};        // memorización por cuenta EXACTA (solo niveles 4 y 5)
+    let erroresSumaEnteros = 0;         // contador general (nivel 6, y nivel 8 cuando toca suma)
+    let erroresMultEnterosMagnitud = 0; // nivel 7 (y nivel 8 cuando toca mult.) — número mal
+    let erroresMultEnterosSigno = 0;    // nivel 7 (y nivel 8 cuando toca mult.) — signo mal
+
+    const TIP_SUMA_ENTEROS_HTML = `
+      <div style="text-align:left; font-size:1.1rem; line-height:1.7;">
+        <div style="font-weight:bold; text-align:center; margin-bottom:10px;">SUMAR ENTEROS</div>
+        <div>1. Mismo signo <b>SUMAR</b></div>
+        <div style="margin-left:22px;">Distinto signo <b>RESTAR</b></div>
+        <div>2. Siempre <b>SIGNO DEL MAYOR</b></div>
+      </div>
+    `;
+
+    const TIP_MULT_SIGNOS_HTML = `
+      <div style="text-align:left; font-size:1.1rem; line-height:1.7;">
+        <div style="font-weight:bold; text-align:center; margin-bottom:10px;">AL MULTIPLICAR Y DIVIDIR</div>
+        <div>+ · + = +</div>
+        <div>− · − = +</div>
+        <div>+ · − = −</div>
+        <div>− · + = −</div>
+      </div>
+    `;
+
+    const MSG_REPASAR_NIVEL1_HTML = `
+      <div style="text-align:center; font-size:1.05rem; line-height:1.5;">
+        Estás fallando el número del resultado (el signo lo llevas bien).<br>
+        Te vendría bien repasar el <b>Nivel 1 (Multiplicación)</b> para reforzar las tablas.
+      </div>
+    `;
+
+    function mostrarModalEspecial(mensajeHtml, pausaMs) {
+      const modal = document.getElementById('app-modal');
+      const titleEl = document.getElementById('modal-title');
+      const contentEl = document.getElementById('modal-content');
+      const actionsEl = document.getElementById('modal-actions');
+
+      titleEl.classList.add('hidden');
+      actionsEl.innerHTML = `<button class="continue-btn hidden" id="continue-modal-btn" onclick="onContinueModalClick()">CONTINUAR →</button>`;
+
+      contentEl.innerHTML = `
+        <div class="correction-box">
+          ${currentOp.correctDisplay}
+          <div class="card-subtitle error">✕ Respuesta incorrecta</div>
+        </div>
+        <div class="tutorial-box" style="margin-top:10px;">
+          ${mensajeHtml}
+        </div>
+      `;
+
+      modal.classList.remove('hidden');
+
+      setTimeout(() => {
+        closeModal();
+        renderOperation();
+      }, pausaMs);
+    }
+
     function processSimpleLevelResult(isCorrect) {
       isProcessing = true;
 
@@ -1796,15 +1867,84 @@
           closeModal();
           renderOperation();
         }, SUCCESS_PAUSE_MS);
-      } else {
-        sessionStats.totalFailures++;
+        return;
+      }
+
+      // ---- Fallo ----
+      sessionStats.totalFailures++;
+
+      // Niveles 4 y 5: memorización por cuenta EXACTA (como en las tablas, pero aparte)
+      if (key === 'sumas' || key === 'restas') {
+        const factKey = currentOp.factKey;
+        if (!statsFactosSimples[factKey]) statsFactosSimples[factKey] = { totalFailuresAcc: 0 };
+        statsFactosSimples[factKey].totalFailuresAcc++;
         saveProgress();
+
+        const pausa = statsFactosSimples[factKey].totalFailuresAcc >= 3 ? STUDY_PAUSE_MS_SIMPLE : ERROR_PAUSE_MS;
+        triggerCorrectionModal();
+        setTimeout(() => {
+          closeModal();
+          renderOperation();
+        }, pausa);
+        return;
+      }
+
+      // Nivel 6 (y 8 cuando toca suma de enteros): contador general del nivel, no por cuenta
+      if (key === 'sumasEnteros') {
+        erroresSumaEnteros++;
+        saveProgress();
+        if (erroresSumaEnteros >= 3) {
+          mostrarModalEspecial(TIP_SUMA_ENTEROS_HTML, STUDY_PAUSE_MS_SIMPLE);
+          return;
+        }
         triggerCorrectionModal();
         setTimeout(() => {
           closeModal();
           renderOperation();
         }, ERROR_PAUSE_MS);
+        return;
       }
+
+      // Nivel 7 (y 8 cuando toca multiplicación): dos contadores independientes, signo y magnitud
+      if (key === 'multEnteros') {
+        const userVal = document.getElementById('user-input').value;
+        const correcto = currentOp.answer;
+        const magnitudCorrecta = Math.abs(parseInt(userVal, 10)) === Math.abs(parseInt(correcto, 10));
+        let signoCorrecto = true;
+        if (parseInt(correcto, 10) !== 0) {
+          const signoUser = userVal.trim().startsWith('-') ? '-' : '+';
+          const signoEsperado = correcto.startsWith('-') ? '-' : '+';
+          signoCorrecto = (signoUser === signoEsperado);
+        }
+
+        if (!magnitudCorrecta) erroresMultEnterosMagnitud++;
+        if (!signoCorrecto) erroresMultEnterosSigno++;
+        saveProgress();
+
+        if (erroresMultEnterosMagnitud >= 5) {
+          mostrarModalEspecial(MSG_REPASAR_NIVEL1_HTML, STUDY_PAUSE_MS_SIMPLE);
+          return;
+        }
+        if (erroresMultEnterosSigno >= 3) {
+          mostrarModalEspecial(TIP_MULT_SIGNOS_HTML, STUDY_PAUSE_MS_SIMPLE);
+          return;
+        }
+
+        triggerCorrectionModal();
+        setTimeout(() => {
+          closeModal();
+          renderOperation();
+        }, ERROR_PAUSE_MS);
+        return;
+      }
+
+      // Fallback (no debería llegar aquí)
+      saveProgress();
+      triggerCorrectionModal();
+      setTimeout(() => {
+        closeModal();
+        renderOperation();
+      }, ERROR_PAUSE_MS);
     }
 
     function processAnswerResult(isCorrect) {
