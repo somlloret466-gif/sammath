@@ -487,14 +487,54 @@
     // URL del flujo de automatización (Power Automate / Google Apps Script)
     const AUTOMATION_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxvbPzlVYywYGqDciB4hmyo2KnNOlltS8LRVC0VXkeLwvK5c8knE70LFYbiY1GjOvv3qg/exec";
 
-    let dynamicTimeLimit = 5000; 
-    let recentResponseTimes = []; 
+    // ===== TIEMPO ADAPTATIVO POR NIVEL =====
+    // Cada nivel (1-8) arranca en 8 s. Cada 100 operaciones completadas en ese nivel, el límite
+    // pasa a ser la media de los tiempos de las respuestas correctas de ese tramo + 3 s
+    // (puede subir o bajar según esa media, con tope de 8 s).
+    const TIEMPO_INICIAL_MS = 8000;
+    const TIEMPO_MAXIMO_MS = 8000;   // el límite puede subir o bajar según la media, pero nunca pasa de 8 s
+    const OPS_POR_TRAMO = 100;
+    let levelTiming = {};        // { [nivel]: { limitMs, opsTramo, timesTramo: [] } } (se guarda en localStorage)
+    let sessionTimeStats = {};   // { [nivel]: { ms, n } } tiempos de respuestas correctas de ESTA sesión (para el diploma)
+
+    function getLevelTiming(lvl) {
+      if (!levelTiming[lvl]) levelTiming[lvl] = { limitMs: TIEMPO_INICIAL_MS, opsTramo: 0, timesTramo: [] };
+      return levelTiming[lvl];
+    }
+    function getCurrentTimeLimit() {
+      return getLevelTiming(currentLevel).limitMs;
+    }
+    function resetSessionTimeStats() {
+      sessionTimeStats = {};
+      for (let l = 1; l <= 8; l++) sessionTimeStats[l] = { ms: 0, n: 0 };
+    }
+    resetSessionTimeStats();
+
+    // Se llama UNA vez por operación terminada (acierto, fallo o tiempo agotado).
+    // responseTimeMs solo se pasa en aciertos; las operaciones de doble factorización
+    // cuentan como operación pero no aportan tiempo (tienen tiempo extra por diseño).
+    function registrarOperacionTiempo(responseTimeMs) {
+      const lvl = currentLevel;
+      const t = getLevelTiming(lvl);
+      t.opsTramo++;
+      if (responseTimeMs != null) {
+        t.timesTramo.push(responseTimeMs);
+        if (!sessionTimeStats[lvl]) sessionTimeStats[lvl] = { ms: 0, n: 0 };
+        sessionTimeStats[lvl].ms += responseTimeMs;
+        sessionTimeStats[lvl].n++;
+      }
+      if (t.opsTramo >= OPS_POR_TRAMO) {
+        if (t.timesTramo.length > 0) {
+          const avg = t.timesTramo.reduce((a, b) => a + b, 0) / t.timesTramo.length;
+          t.limitMs = Math.min(TIEMPO_MAXIMO_MS, Math.round(avg + MARGEN_TIEMPO_MS));
+        }
+        t.opsTramo = 0;
+        t.timesTramo = [];
+      }
+    }
 
     const MULTI_FACTOR_EXTRA_TIME_MS = 3000;
-    const MIN_TIME_LIMIT_MS = 2500;   // por muy rápido que vaya, nunca menos de 2,5s
-    const MAX_TIME_LIMIT_MS = 6000;   // por muy lento que vaya, nunca más de 6s
-    const RESPUESTAS_PARA_MEDIA = 30; // se calcula sobre las últimas 30 respuestas correctas
-    const MARGEN_TIEMPO_MS = 1500;    // margen que se suma a esa media
+    const MARGEN_TIEMPO_MS = 3000;    // margen que se suma a la media de cada tramo de 100 operaciones
     const SUCCESS_PAUSE_MS = 1500;
     const ERROR_PAUSE_MS = 3500;
     const REQUIRED_CLEAN_STREAK = 2;
@@ -686,6 +726,7 @@
           erroresMultEnterosMagnitud = user.erroresMultEnterosMagnitud || 0;
           erroresMultEnterosSigno = user.erroresMultEnterosSigno || 0;
           sessionHistory = user.sessionHistory || [];
+          levelTiming = user.levelTiming || {};
           
           const lastSessionId = user.currentSessionId || 1;
           const lastActivity = user.lastUpdated ? new Date(user.lastUpdated).getTime() : 0;
@@ -897,6 +938,7 @@
         erroresMultEnterosMagnitud: erroresMultEnterosMagnitud,
         erroresMultEnterosSigno: erroresMultEnterosSigno,
         sessionHistory: sessionHistory,
+        levelTiming: levelTiming,
         lastUpdated: new Date().toISOString()
       };
       localStorage.setItem('sammath_minimal_db', JSON.stringify(db));
@@ -918,6 +960,7 @@
       for (let t = 2; t <= 9; t++) {
         sessionTableStats[t] = { aciertos: 0, fallos: 0 };
       }
+      resetSessionTimeStats();
       // Igual, pero para los niveles 4-8 (cálculo mental simple)
       sessionSimpleStats = {
         sumas: { aciertos: 0, fallos: 0 },
@@ -1013,6 +1056,14 @@
         payload[`${k}_a`] = st.aciertos;
         payload[`${k}_f`] = st.fallos;
       });
+
+      // Tiempo de respuesta de los aciertos de ESTA sesión, por nivel (suma en ms y nº de aciertos con tiempo),
+      // para que el diploma pueda calcular la media semanal: sum(nX_ms) / sum(nX_n)
+      for (let l = 1; l <= 8; l++) {
+        const ts = sessionTimeStats[l] || { ms: 0, n: 0 };
+        payload[`n${l}_ms`] = Math.round(ts.ms);
+        payload[`n${l}_n`] = ts.n;
+      }
 
       // Guardamos también en el historial local (respaldo) para futuras comparativas
       sessionHistory.push({
@@ -1179,7 +1230,7 @@
 
     function startHiddenTimer(timeLimit) {
       stopHiddenTimer();
-      const duration = timeLimit || dynamicTimeLimit;
+      const duration = timeLimit || getCurrentTimeLimit();
       timerTimeout = setTimeout(() => {
         onTimeOut();
       }, duration);
@@ -1345,25 +1396,6 @@
 
     const NIVELES_CON_SIGNO = [6, 7, 8];
 
-    // Tiempo adaptativo POR NIVEL (cada uno tiene su propio ritmo, no comparten con las tablas)
-    let dynamicTimeLimitsSimples = {
-      sumas: 3000,
-      restas: 3500,
-      sumasEnteros: 4000,
-      multEnteros: 4500
-    };
-    let recentResponseTimesSimples = {
-      sumas: [], restas: [], sumasEnteros: [], multEnteros: []
-    };
-
-    function actualizarTiempoAdaptativoSimple(nivelSimpleKey, minT, maxT, responseTime) {
-      const lista = recentResponseTimesSimples[nivelSimpleKey];
-      lista.push(responseTime);
-      if (lista.length > RESPUESTAS_PARA_MEDIA) lista.shift();
-      const avg = lista.reduce((a, b) => a + b, 0) / lista.length;
-      dynamicTimeLimitsSimples[nivelSimpleKey] = Math.min(maxT, Math.max(minT, Math.round(avg + MARGEN_TIEMPO_MS)));
-    }
-
     function generarSumas() {
       const a = 1 + Math.floor(Math.random() * 9);
       const b = 1 + Math.floor(Math.random() * 9);
@@ -1373,9 +1405,7 @@
         answer: `${r}`,
         correctDisplay: `${a} + ${b} = ${r}`,
         nivelSimple: "sumas",
-        factKey: `${a}+${b}`,
-        minTime: 2000,
-        maxTime: 4000
+        factKey: `${a}+${b}`
       };
     }
 
@@ -1391,9 +1421,7 @@
         answer: `${r}`,
         correctDisplay: `${a} - ${b} = ${r}`,
         nivelSimple: "restas",
-        factKey: `${a}-${b}`,
-        minTime: 2500,
-        maxTime: 5000
+        factKey: `${a}-${b}`
       };
     }
 
@@ -1413,9 +1441,7 @@
         text: `${textoOperacion} = _`,
         answer: `${r}`,
         correctDisplay: `${textoOperacion} = ${r}`,
-        nivelSimple: "sumasEnteros",
-        minTime: 2500,
-        maxTime: 6000
+        nivelSimple: "sumasEnteros"
       };
     }
 
@@ -1430,9 +1456,7 @@
         text: `${textoOperacion} = _`,
         answer: `${r}`,
         correctDisplay: `${textoOperacion} = ${r}`,
-        nivelSimple: "multEnteros",
-        minTime: 3000,
-        maxTime: 7000
+        nivelSimple: "multEnteros"
       };
     }
 
@@ -1587,9 +1611,9 @@
 
       let limit;
       if (currentOp.nivelSimple) {
-        limit = dynamicTimeLimitsSimples[currentOp.nivelSimple];
+        limit = getCurrentTimeLimit();
       } else {
-        limit = currentOp.isMultiFactor ? (dynamicTimeLimit + MULTI_FACTOR_EXTRA_TIME_MS) : dynamicTimeLimit;
+        limit = currentOp.isMultiFactor ? (getCurrentTimeLimit() + MULTI_FACTOR_EXTRA_TIME_MS) : getCurrentTimeLimit();
       }
       startHiddenTimer(limit);
     }
@@ -1686,7 +1710,7 @@
         if (idx === 0) {
           // Pasamos a la segunda fila, con tiempo fresco para responderla
           currentOp.subIndex = 1;
-          const limit = dynamicTimeLimit + MULTI_FACTOR_EXTRA_TIME_MS;
+          const limit = getCurrentTimeLimit() + MULTI_FACTOR_EXTRA_TIME_MS;
           startHiddenTimer(limit);
         } else {
           const ambasCorrectas = currentOp.subOps[0].correcto && currentOp.subOps[1].correcto;
@@ -1743,6 +1767,7 @@
       stopHiddenTimer();
 
       sessionStats.totalAttempts++;
+      registrarOperacionTiempo(null);
 
       currentOp.tables.forEach(t => {
         if (sessionTableStats[t]) {
@@ -1753,12 +1778,6 @@
 
       if (esCorrecto) {
         sessionStats.totalSuccesses++;
-
-        const responseTime = Date.now() - currentOp.startTime;
-        recentResponseTimes.push(responseTime);
-        if (recentResponseTimes.length > RESPUESTAS_PARA_MEDIA) recentResponseTimes.shift();
-        const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
-        dynamicTimeLimit = Math.min(MAX_TIME_LIMIT_MS, Math.max(MIN_TIME_LIMIT_MS, Math.round(avgTime + MARGEN_TIEMPO_MS)));
 
         saveProgress();
         triggerSuccessModal();
@@ -1848,6 +1867,7 @@
 
       sessionStats.totalAttempts++;
       stat.attempts++;
+      registrarOperacionTiempo(isCorrect ? Date.now() - currentOp.startTime : null);
 
       if (sessionSimpleStats[key]) {
         if (isCorrect) sessionSimpleStats[key].aciertos++;
@@ -1858,8 +1878,6 @@
         sessionStats.totalSuccesses++;
         stat.successes++;
 
-        const responseTime = Date.now() - currentOp.startTime;
-        actualizarTiempoAdaptativoSimple(key, currentOp.minTime, currentOp.maxTime, responseTime);
 
         saveProgress();
         triggerSuccessModal();
@@ -1953,6 +1971,7 @@
       const stat = opStats[currentOpKey];
       
       sessionStats.totalAttempts++;
+      registrarOperacionTiempo(isCorrect ? Date.now() - currentOp.startTime : null);
       aplicarResultadoAFact(currentOpKey, isCorrect);
 
       // Acumulado por tabla (2-9) de esta sesión, para el desglose que se envía al registro
@@ -1967,14 +1986,6 @@
 
       if (isCorrect) {
         sessionStats.totalSuccesses++;
-
-        const responseTime = Date.now() - currentOp.startTime;
-        recentResponseTimes.push(responseTime);
-        if (recentResponseTimes.length > RESPUESTAS_PARA_MEDIA) {
-          recentResponseTimes.shift(); 
-        }
-        const avgTime = recentResponseTimes.reduce((a, b) => a + b, 0) / recentResponseTimes.length;
-        dynamicTimeLimit = Math.min(MAX_TIME_LIMIT_MS, Math.max(MIN_TIME_LIMIT_MS, Math.round(avgTime + MARGEN_TIEMPO_MS))); 
 
         saveProgress();
         triggerSuccessModal();
