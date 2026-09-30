@@ -406,6 +406,10 @@
     <div id="view-levels" class="menu-container hidden">
       <div class="menu-title">SamMath</div>
 
+      <div id="aviso-inactividad" class="hidden" style="background:#fff3cd;border:1px solid #f1c232;border-radius:10px;padding:10px 14px;margin:0 0 14px 0;font-size:15px;text-align:center;">
+        La sesión se ha cerrado por inactividad y tus resultados ya se han guardado. Elige un nivel para continuar.
+      </div>
+
       <div class="level-grid">
         <div class="level-btn" onclick="selectLevel(1)">
           <div class="level-name">1 Multiplicación</div>
@@ -585,6 +589,16 @@
     let sessionInterval = null;
     let sessionSecondsRemaining = SESSION_MAX_DURATION_SEC;
     let isSessionActive = false;
+
+    // ===== INACTIVIDAD =====
+    // Si el alumno deja de tocar la app, se cierra la sesión y se envía el informe a la hoja
+    // aunque la pestaña siga abierta. Se considera inactividad cuando:
+    //  - pasan INACTIVITY_LIMIT_MS sin ninguna pulsación/toque, o
+    //  - se agotan MAX_TIMEOUTS_SEGUIDOS operaciones seguidas sin que el alumno toque nada.
+    const INACTIVITY_LIMIT_MS = 2 * 60 * 1000;
+    const MAX_TIMEOUTS_SEGUIDOS = 3;
+    let lastActivityTs = Date.now();
+    let timeoutsSeguidos = 0;
 
     let sessionStats = {
       totalAttempts: 0,
@@ -955,6 +969,8 @@
         startTime: new Date()
       };
       informeYaEnviado = false;
+      lastActivityTs = Date.now();
+      timeoutsSeguidos = 0;
       // Desglose de aciertos/fallos por tabla (2-9) SOLO de esta sesión (se reinicia cada sesión)
       sessionTableStats = {};
       for (let t = 2; t <= 9; t++) {
@@ -1023,7 +1039,11 @@
         ? Math.round((sessionStats.totalSuccesses / sessionStats.totalAttempts) * 100) 
         : 0;
 
-      const durationMinutes = Math.round((SESSION_MAX_DURATION_SEC - sessionSecondsRemaining) / 60) || 1;
+      // Duración = desde el inicio de la sesión hasta la última vez que el alumno tocó algo
+      // (así no cuenta el tiempo muerto con la pestaña abierta y nadie delante).
+      const inicioMs = sessionStats.startTime ? sessionStats.startTime.getTime() : lastActivityTs;
+      const durationMinutes = Math.min(Math.round(SESSION_MAX_DURATION_SEC / 60),
+                                       Math.max(1, Math.round((lastActivityTs - inicioMs) / 60000)));
       const previousAvgAccuracy = getPreviousAverageAccuracy();
       const mensajeDocente = generarMensajeDocente(durationMinutes, accuracy, previousAvgAccuracy);
 
@@ -1106,6 +1126,47 @@
       }
     });
 
+    // Cierra la sesión por inactividad: envía el informe a la hoja y vuelve al menú de niveles.
+    function cerrarSesionPorInactividad() {
+      stopHiddenTimer();
+      closeModal();
+      pendingNextStep = null;
+      finishSessionAndSendReport(); // envía si hubo intentos y no se había enviado ya
+      isProcessing = false;
+      timeoutsSeguidos = 0;
+      showLevelsMenu();
+      const aviso = document.getElementById('aviso-inactividad');
+      if (aviso) aviso.classList.remove('hidden');
+    }
+
+    // Cualquier toque o tecla cuenta como actividad. Si la práctica está en pantalla pero la sesión
+    // ya se había cerrado y enviado (pestaña oculta un momento, 20 min cumplidos...), empieza una sesión nueva
+    // para que lo que haga el alumno a partir de ahora también se registre.
+    function registrarActividad() {
+      lastActivityTs = Date.now();
+      timeoutsSeguidos = 0;
+      const practicaVisible = !document.getElementById('view-practice').classList.contains('hidden');
+      if (practicaVisible && !isSessionActive && studentNumeroClase && parentEmail) {
+        startGlobalSessionTimer();
+      }
+    }
+    ['keydown', 'pointerdown', 'touchstart', 'mousedown'].forEach(ev =>
+      window.addEventListener(ev, registrarActividad, { capture: true, passive: true })
+    );
+
+    setInterval(() => {
+      if (isSessionActive && (Date.now() - lastActivityTs) >= INACTIVITY_LIMIT_MS) {
+        cerrarSesionPorInactividad();
+      }
+    }, 5000);
+
+    // Al volver a la pestaña (tras haberse enviado el informe al ocultarla) se genera una operación nueva
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      const practicaVisible = !document.getElementById('view-practice').classList.contains('hidden');
+      if (practicaVisible && !isProcessing && currentOp) renderOperation();
+    });
+
     function showLevelsMenu() {
       stopGlobalSessionTimer();
       document.getElementById('view-register').classList.add('hidden');
@@ -1114,6 +1175,8 @@
     }
 
     function selectLevel(lvl) {
+      const avisoInact = document.getElementById('aviso-inactividad');
+      if (avisoInact) avisoInact.classList.add('hidden');
       if (!studentNumeroClase || !parentEmail || !studentCentro || !studentCurso) {
         showRegisterView();
         return;
@@ -1245,6 +1308,18 @@
 
     function onTimeOut() {
       if (isProcessing) return;
+      // Con la pestaña oculta no se cuenta nada: al volver se genera una operación nueva
+      if (document.hidden) return;
+      // Operación que termina sin que el alumno haya tocado nada
+      if (currentOp && lastActivityTs < currentOp.startTime) {
+        timeoutsSeguidos++;
+        if (timeoutsSeguidos >= MAX_TIMEOUTS_SEGUIDOS) {
+          cerrarSesionPorInactividad();
+          return;
+        }
+      } else {
+        timeoutsSeguidos = 0;
+      }
       if (currentOp && currentOp.isDualFactor) {
         // Se acabó el tiempo: la fila en curso (y la que no llegó a intentarse) cuentan como falladas
         currentOp.subOps.forEach(sub => {
@@ -1569,6 +1644,8 @@
 
     function renderOperation() {
       stopHiddenTimer();
+      // Si la práctica ya no está en pantalla (menú de niveles, cierre por inactividad), no se genera nada
+      if (document.getElementById('view-practice').classList.contains('hidden')) return;
       isProcessing = false;
       
       const inputEl = document.getElementById('user-input');
