@@ -315,6 +315,18 @@
       opacity: 0.7;
     }
 
+    .home-btn {
+      background: var(--btn-bg);
+      color: var(--text);
+      border: none;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+
     .secondary-btn {
       background: var(--btn-bg);
       color: var(--text);
@@ -443,7 +455,7 @@
     <!-- VISTA 2: PRÁCTICA -->
     <div id="view-practice" class="menu-container hidden">
       <div class="header-bar">
-        
+        <button class="home-btn" onclick="volverAlMenu()" aria-label="Volver al menú principal" title="Menú principal">🏠</button>
       </div>
 
       <div class="operation-text" id="op-text">--</div>
@@ -608,6 +620,11 @@
     };
 
     let sessionHistory = [];
+    let ultimasOps = {};              // { [nivel]: [[acierto(1/0), tabla, tabla...], ...] } últimas 150 operaciones de cada nivel
+    let rachaActual = 0;              // aciertos seguidos de la sesión en curso
+    let logrosMostrados = {};         // "dominios" ya felicitados (T2..T9, S:sumas, ...)
+    let avisoCambioNivelDado = null;  // nivel para el que ya se mostró el aviso de cambio de nivel
+    let pausaExtraExito = 0;          // milisegundos extra de pausa cuando sale un mensaje de racha/dominio
     // Desglose de aciertos/fallos por tabla (2 a 9) de la sesión actual
     let sessionTableStats = {};
     let isProcessing = false;
@@ -741,6 +758,9 @@
           erroresMultEnterosSigno = user.erroresMultEnterosSigno || 0;
           sessionHistory = user.sessionHistory || [];
           levelTiming = user.levelTiming || {};
+          logrosMostrados = user.logrosMostrados || {};
+          ultimasOps = user.ultimasOps || {};
+          avisoCambioNivelDado = user.avisoCambioNivelDado || null;
           
           const lastSessionId = user.currentSessionId || 1;
           const lastActivity = user.lastUpdated ? new Date(user.lastUpdated).getTime() : 0;
@@ -953,6 +973,9 @@
         erroresMultEnterosSigno: erroresMultEnterosSigno,
         sessionHistory: sessionHistory,
         levelTiming: levelTiming,
+        logrosMostrados: logrosMostrados,
+        ultimasOps: ultimasOps,
+        avisoCambioNivelDado: avisoCambioNivelDado,
         lastUpdated: new Date().toISOString()
       };
       localStorage.setItem('sammath_minimal_db', JSON.stringify(db));
@@ -969,6 +992,7 @@
         startTime: new Date()
       };
       informeYaEnviado = false;
+      rachaActual = 0;
       lastActivityTs = Date.now();
       timeoutsSeguidos = 0;
       // Desglose de aciertos/fallos por tabla (2-9) SOLO de esta sesión (se reinicia cada sesión)
@@ -1086,11 +1110,22 @@
       }
 
       // Guardamos también en el historial local (respaldo) para futuras comparativas
+      const tablasSesion = {};
+      for (let t = 2; t <= 9; t++) {
+        const st = sessionTableStats[t] || { aciertos: 0, fallos: 0 };
+        tablasSesion[t] = [st.aciertos, st.fallos];
+      }
       sessionHistory.push({
         fecha: payload.fecha,
         duracion_minutos: durationMinutes,
-        precision: accuracy
+        precision: accuracy,
+        nivel: currentLevel,
+        aciertos: sessionStats.totalSuccesses,
+        fallos: sessionStats.totalFailures,
+        tablas: tablasSesion
       });
+      // Si ya practicó en otro nivel distinto al del último aviso, el aviso de cambio de nivel vuelve a poder salir
+      if (avisoCambioNivelDado !== null && avisoCambioNivelDado !== currentLevel) avisoCambioNivelDado = null;
       if (sessionHistory.length > 60) sessionHistory.shift();
       saveProgress();
 
@@ -1172,6 +1207,128 @@
       document.getElementById('view-register').classList.add('hidden');
       document.getElementById('view-practice').classList.add('hidden');
       document.getElementById('view-levels').classList.remove('hidden');
+      actualizarNivelRecomendado();
+    }
+
+    // Botón de la casita: guarda/envía la sesión en curso y vuelve al menú principal
+    function volverAlMenu() {
+      stopHiddenTimer();
+      closeModal();
+      pendingNextStep = null;
+      finishSessionAndSendReport();
+      isProcessing = false;
+      timeoutsSeguidos = 0;
+      pendingAlternationQueue = [];
+      opInAlternation = null;
+      showLevelsMenu();
+    }
+
+    // ===== AVISOS PARA EL ALUMNO: cambio de nivel, dominio de tabla/nivel y rachas =====
+    const NOMBRES_NIVEL_APP = {
+      1: "Multiplicación", 2: "División", 3: "Factorización", 4: "Sumas", 5: "Restas",
+      6: "Sumas con enteros", 7: "Multiplicación con enteros", 8: "Combinado (enteros)"
+    };
+    const VENTANA_NIVEL = 150;             // se miran las últimas 150 operaciones del nivel
+    const CAMBIO_NIVEL_MIN_PREC = 0.85;    // acierto superior al 85% (en niveles 1-3, también en cada tabla)
+    const CAMBIO_NIVEL_MIN_OPS_TABLA = 5;  // una tabla solo cuenta si aparece al menos 5 veces en esas 150
+    const DOMINIO_MIN_OPS = 100;           // más de 100 operaciones
+    const DOMINIO_MIN_PREC = 0.90;         // acierto superior al 90%
+    const RACHA_CADA = 10;                 // "Estás en racha" cada 10 aciertos seguidos
+    const TEXTOS_DOMINIO_SIMPLE = {
+      sumas: "las sumas", restas: "las restas",
+      sumasEnteros: "la suma de enteros", multEnteros: "la multiplicación de enteros"
+    };
+
+    function pausaExito() {
+      const p = SUCCESS_PAUSE_MS + pausaExtraExito;
+      pausaExtraExito = 0;
+      return p;
+    }
+
+    // Guarda el resultado de cada operación en la ventana de las últimas 150 del nivel actual
+    function registrarOpVentana(correcto, tablas) {
+      const l = currentLevel;
+      if (!ultimasOps[l]) ultimasOps[l] = [];
+      const t = (tablas || []).map(Number).filter(x => x >= 2 && x <= 9);
+      ultimasOps[l].push([correcto ? 1 : 0].concat(t));
+      while (ultimasOps[l].length > VENTANA_NIVEL) ultimasOps[l].shift();
+    }
+
+    // Devuelve el nivel actual si las últimas 150 operaciones de este nivel cumplen las condiciones
+    // de cambio de nivel (y todavía no se ha avisado en este nivel); si no, null.
+    function evaluarCambioNivel() {
+      const l = currentLevel;
+      if (l >= 8 || avisoCambioNivelDado === l) return null;
+      const v = ultimasOps[l] || [];
+      if (v.length < VENTANA_NIVEL) return null;
+      const aciertos = v.filter(x => x[0] === 1).length;
+      if (aciertos / v.length <= CAMBIO_NIVEL_MIN_PREC) return null;
+      if (l <= 3) {
+        // Niveles 1-3: cada tabla (con suficientes operaciones en la ventana) también debe superar el 85%
+        const porTabla = {};
+        v.forEach(x => {
+          for (let k = 1; k < x.length; k++) {
+            const t = x[k];
+            if (!porTabla[t]) porTabla[t] = [0, 0];
+            porTabla[t][1]++;
+            if (x[0] === 1) porTabla[t][0]++;
+          }
+        });
+        for (const t in porTabla) {
+          const [a, n] = porTabla[t];
+          if (n >= CAMBIO_NIVEL_MIN_OPS_TABLA && a / n <= CAMBIO_NIVEL_MIN_PREC) return null;
+        }
+      }
+      return l;
+    }
+
+    // Marca con una estrella el nivel recomendado en el menú de niveles
+    function actualizarNivelRecomendado() {
+      const botones = document.querySelectorAll('#view-levels .level-btn');
+      botones.forEach((b, idx) => {
+        const viejo = b.querySelector('.badge-recomendado');
+        if (viejo) viejo.remove();
+        if (avisoCambioNivelDado !== null && idx + 1 === avisoCambioNivelDado + 1) {
+          const sp = document.createElement('div');
+          sp.className = 'badge-recomendado';
+          sp.style.cssText = 'font-size:0.8rem;font-weight:bold;color:#b8860b;margin-top:2px;';
+          sp.textContent = '⭐ Recomendado';
+          b.appendChild(sp);
+        }
+      });
+    }
+
+    // Mira si con la operación que acaba de acertar el alumno "domina" su tabla o su nivel por primera vez.
+    // Devuelve el texto del aviso (o '' si no hay) y lo marca como ya mostrado.
+    function obtenerLogroNuevo() {
+      if (!currentOp) return '';
+      const candidatos = [];
+      if (currentOp.nivelSimple) {
+        const k = currentOp.nivelSimple;
+        const st = statsSimples[k];
+        if (st) candidatos.push({ clave: 'S:' + k, intentos: st.attempts, aciertos: st.successes, texto: TEXTOS_DOMINIO_SIMPLE[k] || 'este nivel' });
+      } else {
+        const tablas = (currentOp.isDualFactor && currentOp.tables) ? currentOp.tables : [currentOp.table];
+        tablas.forEach(t => {
+          t = Number(t);
+          if (!(t >= 2 && t <= 9)) return;
+          let a = 0, s2 = 0;
+          for (let i = 1; i <= 10; i++) {
+            const st = opStats[`${t}x${i}`];
+            if (st) { a += st.attempts; s2 += st.successes; }
+          }
+          candidatos.push({ clave: 'T' + t, intentos: a, aciertos: s2, texto: 'la tabla del ' + t });
+        });
+      }
+      for (const c of candidatos) {
+        if (logrosMostrados[c.clave]) continue;
+        if (c.intentos > DOMINIO_MIN_OPS && c.aciertos / c.intentos > DOMINIO_MIN_PREC) {
+          logrosMostrados[c.clave] = true;
+          saveProgress();
+          return `¡Dominas ${c.texto}, enhorabuena!`;
+        }
+      }
+      return '';
     }
 
     function selectLevel(lvl) {
@@ -1845,6 +2002,7 @@
 
       sessionStats.totalAttempts++;
       registrarOperacionTiempo(null);
+      registrarOpVentana(esCorrecto, currentOp.tables);
 
       currentOp.tables.forEach(t => {
         if (sessionTableStats[t]) {
@@ -1855,15 +2013,17 @@
 
       if (esCorrecto) {
         sessionStats.totalSuccesses++;
+        rachaActual++;
 
         saveProgress();
         triggerSuccessModal();
         setTimeout(() => {
           closeModal();
           renderOperation();
-        }, SUCCESS_PAUSE_MS);
+        }, pausaExito());
       } else {
         sessionStats.totalFailures++;
+        rachaActual = 0;
         saveProgress();
         triggerCorrectionModal();
         setTimeout(() => {
@@ -1945,6 +2105,7 @@
       sessionStats.totalAttempts++;
       stat.attempts++;
       registrarOperacionTiempo(isCorrect ? Date.now() - currentOp.startTime : null);
+      registrarOpVentana(isCorrect, []);
 
       if (sessionSimpleStats[key]) {
         if (isCorrect) sessionSimpleStats[key].aciertos++;
@@ -1953,6 +2114,7 @@
 
       if (isCorrect) {
         sessionStats.totalSuccesses++;
+        rachaActual++;
         stat.successes++;
 
 
@@ -1961,12 +2123,13 @@
         setTimeout(() => {
           closeModal();
           renderOperation();
-        }, SUCCESS_PAUSE_MS);
+        }, pausaExito());
         return;
       }
 
       // ---- Fallo ----
       sessionStats.totalFailures++;
+        rachaActual = 0;
 
       // Niveles 4 y 5: memorización por cuenta EXACTA (como en las tablas, pero aparte)
       if (key === 'sumas' || key === 'restas') {
@@ -2049,6 +2212,7 @@
       
       sessionStats.totalAttempts++;
       registrarOperacionTiempo(isCorrect ? Date.now() - currentOp.startTime : null);
+      registrarOpVentana(isCorrect, [Number(String(currentOpKey).split('x')[0])]);
       aplicarResultadoAFact(currentOpKey, isCorrect);
 
       // Acumulado por tabla (2-9) de esta sesión, para el desglose que se envía al registro
@@ -2063,6 +2227,7 @@
 
       if (isCorrect) {
         sessionStats.totalSuccesses++;
+        rachaActual++;
 
         saveProgress();
         triggerSuccessModal();
@@ -2082,10 +2247,11 @@
             }
           }
           renderOperation();
-        }, SUCCESS_PAUSE_MS);
+        }, pausaExito());
 
       } else {
         sessionStats.totalFailures++;
+        rachaActual = 0;
         saveProgress();
 
         triggerCorrectionModal();
@@ -2136,10 +2302,27 @@
       // sustituyen este contenedor por botones propios, y si no lo recreamos, deja de existir.
       actionsEl.innerHTML = `<button class="continue-btn hidden" id="continue-modal-btn" onclick="onContinueModalClick()">CONTINUAR →</button>`;
 
+      // Todos los avisos (dominio, cambio de nivel y racha) salen juntos en este mismo pop-up
       let motivationalHtml = '';
-      if (sessionStats.totalSuccesses > 0 && sessionStats.totalSuccesses % MOTIVATIONAL_EVERY_N_SUCCESSES === 0) {
+      const logro = obtenerLogroNuevo();
+      const nivelCambio = evaluarCambioNivel();
+      const enRacha = rachaActual > 0 && rachaActual % RACHA_CADA === 0;
+      const linea = txt => `<div class="card-subtitle success" style="margin-top:6px;">${txt}</div>`;
+      if (logro) motivationalHtml += linea('🏆 ' + logro);
+      if (nivelCambio !== null) {
+        avisoCambioNivelDado = nivelCambio;
+        saveProgress();
+        const sig = nivelCambio + 1;
+        motivationalHtml += linea(`📈 ¡Es hora de cambiar de nivel! Pasa al nivel ${sig} ${NOMBRES_NIVEL_APP[sig]}. Pulsa 🏠 y elígelo.`);
+      }
+      if (enRacha) motivationalHtml += linea('🔥 ¡Estás en racha!');
+      if (nivelCambio !== null) {
+        pausaExtraExito = 5000; // más tiempo para leer el aviso de cambio de nivel
+      } else if (logro || enRacha) {
+        pausaExtraExito = 1500; // un poco más de tiempo para leerlo
+      } else if (sessionStats.totalSuccesses > 0 && sessionStats.totalSuccesses % MOTIVATIONAL_EVERY_N_SUCCESSES === 0) {
         const msg = MOTIVATIONAL_MESSAGES[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)];
-        motivationalHtml = `<div class="card-subtitle success" style="margin-top:6px;">${msg}</div>`;
+        motivationalHtml = linea(msg);
       }
 
       contentEl.innerHTML = `
